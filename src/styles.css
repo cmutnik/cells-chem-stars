@@ -224,6 +224,41 @@ a {
   gap: 8px;
 }
 
+.info-tip {
+  position: relative;
+  display: inline-flex;
+  cursor: default;
+}
+
+.info-tip-body {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 220px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgba(20, 18, 36, 0.96);
+  border: 1px solid rgba(100, 120, 220, 0.22);
+  color: #c8cef5;
+  font-family: var(--sans, sans-serif);
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.5;
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+  z-index: 20;
+}
+
+.info-tip:hover .info-tip-body,
+.info-tip:focus-within .info-tip-body {
+  opacity: 1;
+}
+
 .cell-list,
 .organelle-list {
   display: grid;

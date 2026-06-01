@@ -3,7 +3,8 @@ export type CosmicKind =
   | "neutronStar"
   | "blackHole"
   | "exoplanet"
-  | "galaxy";
+  | "galaxy"
+  | "binaryStar";
 
 export type ViewMode = "mesh" | "focus";
 
@@ -390,6 +391,81 @@ export const cosmicObjects: CosmicObject[] = [
         ],
         note: "The thin stellar disk is where most star formation and spiral structure occurs. It is embedded in a thicker, older stellar population (the thick disk) and surrounded by the dark matter halo. The gas fraction decreases as galaxies age as cold gas is consumed by star formation or expelled by stellar feedback.",
         fact: "The Milky Way forms roughly 1–3 new stars per year — a relatively low rate compared to starburst galaxies, which can form hundreds of solar masses of stars per year.",
+      },
+    ],
+  },
+  {
+    id: "binaryStar",
+    name: "Binary Star System",
+    type: "Astrophysics  ·  Algol-type  ·  ~2–5 M☉",
+    accent: "#ff7043",
+    accentSoft: "#fbe9e7",
+    color: "#ffab91",
+    modelKind: "binaryStar",
+    defaultFeature: "primaryStar",
+    comparison: "mainStar",
+    occurrence: {
+      title: "More than half of all stars have a companion",
+      body: "Binary and multiple star systems are the rule, not the exception — over 50% of Sun-like stars and up to 80% of massive stars reside in multi-star systems. They form when a collapsing molecular cloud fragments into two or more clumps. Close binaries can exchange mass, producing exotic outcomes like X-ray binaries, cataclysmic variables, and Type Ia supernovae.",
+      motif: "orbit",
+    },
+    observations: [
+      { label: "Spectroscopic (radial velocity)", tone: "#ff7043", pattern: "optical-photometry" },
+      { label: "Photometric (eclipses)", tone: "#ffab91", pattern: "radio-telescope" },
+      { label: "X-ray (mass transfer)", tone: "#bf360c", pattern: "xray-imaging" },
+    ],
+    features: [
+      {
+        id: "primaryStar",
+        name: "Primary Star",
+        subtitle: "The more massive companion",
+        color: "#ff7043",
+        attributes: [
+          { label: "Mass", value: "~2–5 M☉" },
+          { label: "Type", value: "A/F main-sequence or subgiant" },
+          { label: "Orbital period", value: "Days to years" },
+        ],
+        note: "In a binary system the more massive star evolves faster, expanding into a subgiant or giant while the secondary is still on the main sequence. When the primary's outer envelope overflows its Roche lobe — the teardrop-shaped gravitational boundary — mass streams onto the companion, altering both stars' evolutionary tracks.",
+        fact: "Algol (β Persei), the original 'demon star', is a semi-detached eclipsing binary just 90 light-years away. Its periodic dimming was understood by John Goodricke in 1783, making it the first binary explained scientifically.",
+      },
+      {
+        id: "secondaryStar",
+        name: "Secondary Star",
+        subtitle: "The lower-mass companion",
+        color: "#ffccbc",
+        attributes: [
+          { label: "Mass", value: "~0.8–2 M☉" },
+          { label: "Type", value: "G/K main-sequence" },
+          { label: "Separation", value: "0.1–10 AU (close pair)" },
+        ],
+        note: "The secondary star orbits the common centre of mass (barycentre) and may be a mass gainer in a semi-detached system. Accreted material spins it up, and the influx of hydrogen-rich gas can dramatically change its surface composition and luminosity. In some systems the secondary eventually surpasses the primary in mass — a reversal called the Algol paradox.",
+        fact: "The Algol paradox puzzled astronomers for decades: in Algol the less evolved star is the more massive one, seemingly violating stellar evolution theory. Mass transfer is the resolution.",
+      },
+      {
+        id: "rocheLobes",
+        name: "Roche Lobes",
+        subtitle: "Gravitational equipotential surfaces",
+        color: "#ff8a65",
+        attributes: [
+          { label: "Shape", value: "Teardrop (touching at L1)" },
+          { label: "Lagrange point", value: "L1 between the stars" },
+          { label: "Overflow condition", value: "Star radius ≥ Roche radius" },
+        ],
+        note: "The Roche lobe is the critical equipotential surface around each star within which material is gravitationally bound to that star. Where the two lobes touch — the inner Lagrange point L1 — is the gateway for mass transfer. A detached binary has both stars well within their lobes; a semi-detached binary has one star filling its lobe; a contact binary has both stars overflowing, sharing a common envelope.",
+        fact: "Édouard Roche derived the tidal radius limit in 1848, originally in the context of why moons don't aggregate too close to planets — the same mathematics governs mass transfer in binary stars.",
+      },
+      {
+        id: "accretionStream",
+        name: "Accretion Stream",
+        subtitle: "Mass transfer between the stars",
+        color: "#bf360c",
+        attributes: [
+          { label: "Transfer rate", value: "10⁻⁹–10⁻⁷ M☉ / yr" },
+          { label: "Velocity", value: "Hundreds of km/s" },
+          { label: "Temperature", value: "Up to 10⁵ K (disk rim)" },
+        ],
+        note: "Gas escaping through L1 forms a narrow stream that spirals into an accretion disk around the mass-gaining star. Viscous dissipation in the disk converts gravitational potential energy to heat and light — in X-ray binaries where the accretor is a neutron star or black hole, this process is extraordinarily efficient, radiating more energy per kilogram than nuclear fusion.",
+        fact: "In a Type Ia supernova scenario, a white dwarf accretes mass from a companion until it reaches the Chandrasekhar limit (~1.4 M☉) and undergoes thermonuclear detonation — producing a 'standard candle' used to measure cosmic expansion.",
       },
     ],
   },

@@ -2,6 +2,8 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { Center, ContactShadows, Float, Html, OrbitControls, useProgress } from "@react-three/drei";
 import { Suspense, useMemo, useRef } from "react";
 import {
+  BufferAttribute,
+  BufferGeometry,
   CatmullRomCurve3,
   Group,
   Mesh,
@@ -234,28 +236,66 @@ function MainStarModel({ activeFeature, viewMode, crossSection }: CommonModelPro
   );
 }
 
-// Gravitational wave rings — three phase-offset expanding tori
-function GravitationalWaveRings() {
-  const ringRefs = useRef<(Mesh | null)[]>([null, null, null]);
+// Gravitational wave spacetime grid — two perpendicular animated wireframe planes
+// showing the GW "+" polarisation deforming the spacetime fabric.
+function GravitationalWaveGrid() {
+  const N = 30;           // grid lines per axis
+  const extent = 4.8;    // half-size in world units
+  const W = N + 1;        // vertex count per axis
+  const step = (extent * 2) / N;
 
+  // Build a flat NxN grid of line-segment pairs once; Y is animated each frame.
+  const geometry = useMemo(() => {
+    const verts = new Float32Array(W * W * 3);
+    let vi = 0;
+    for (let i = 0; i <= N; i++) {
+      for (let j = 0; j <= N; j++) {
+        verts[vi++] = -extent + i * step;
+        verts[vi++] = 0;
+        verts[vi++] = -extent + j * step;
+      }
+    }
+    const idxs: number[] = [];
+    for (let i = 0; i <= N; i++) {
+      for (let j = 0; j < N; j++) {
+        idxs.push(i * W + j, i * W + j + 1);   // row segments (constant i)
+        idxs.push(j * W + i, (j + 1) * W + i); // col segments (constant j)
+      }
+    }
+    const geo = new BufferGeometry();
+    geo.setAttribute("position", new BufferAttribute(verts, 3));
+    geo.setIndex(idxs);
+    return geo;
+  }, []);
+
+  // Each frame: displace Y with a decaying outward sinusoid (radial GW ripple).
   useFrame(({ clock }) => {
-    ringRefs.current.forEach((mesh, i) => {
-      if (!mesh) return;
-      const phase = ((clock.elapsedTime * 0.45 + i * 0.333) % 1);
-      const s = 1 + phase * 5;
-      mesh.scale.set(s, s, s);
-      (mesh.material as MeshStandardMaterial).opacity = (1 - phase) * 0.52;
-    });
+    const t = clock.elapsedTime;
+    const pos = geometry.attributes.position as BufferAttribute;
+    for (let i = 0; i <= N; i++) {
+      for (let j = 0; j <= N; j++) {
+        const x = -extent + i * step;
+        const z = -extent + j * step;
+        const r = Math.sqrt(x * x + z * z);
+        // Amplitude decays as 1/(1 + r·k) to simulate 1/r spreading with a soft near-field floor.
+        const y = r < 0.22 ? 0 : (0.46 / (1 + r * 0.28)) * Math.sin(r * 2.1 - t * 3.4);
+        pos.setY(i * W + j, y);
+      }
+    }
+    pos.needsUpdate = true;
   });
 
   return (
-    <group rotation={[Math.PI / 2, 0, 0]}>
-      {([0, 1, 2] as const).map((i) => (
-        <mesh key={i} ref={(el) => { ringRefs.current[i] = el; }}>
-          <torusGeometry args={[1.2, 0.032, 8, 80]} />
-          <meshStandardMaterial color="#4fc3f7" transparent opacity={0.4} />
-        </mesh>
-      ))}
+    <group>
+      {/* Horizontal spacetime sheet (XZ world plane, wave in Y) */}
+      <lineSegments geometry={geometry}>
+        <lineBasicMaterial color="#29b6f6" opacity={0.38} transparent />
+      </lineSegments>
+      {/* Vertical spacetime sheet (rotated to YZ world plane, same wave now in X)
+          Together the two planes show the "+" polarisation cross-section */}
+      <lineSegments geometry={geometry} rotation={[0, 0, Math.PI / 2]}>
+        <lineBasicMaterial color="#29b6f6" opacity={0.2} transparent />
+      </lineSegments>
     </group>
   );
 }
@@ -297,8 +337,8 @@ function NeutronStarModel({ activeFeature, viewMode, crossSection, activeObserva
 
   return (
     <group>
-      {/* Gravitational wave rings (gw observation only) */}
-      {obs === "gravitational-wave" && <GravitationalWaveRings />}
+      {/* Gravitational wave spacetime grid (gw observation only) */}
+      {obs === "gravitational-wave" && <GravitationalWaveGrid />}
 
       {/* Soft glow shell */}
       <mesh>
@@ -492,6 +532,77 @@ function GalaxyModel({ activeFeature, viewMode, crossSection }: CommonModelProps
   );
 }
 
+// Binary Star System — primary + secondary spheres, shared orbit ring, Roche lobe tori, accretion stream
+function BinaryStarModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+  const streamGeometry = useMemo(() => {
+    const pts = [
+      new Vector3(1.05, 0, 0),
+      new Vector3(0.4, 0.3, 0),
+      new Vector3(0, 0.15, 0),
+      new Vector3(-0.35, 0.22, 0),
+      new Vector3(-1.0, 0, 0),
+    ];
+    return new TubeGeometry(new CatmullRomCurve3(pts), 32, 0.04, 8, false);
+  }, []);
+
+  return (
+    <group scale={[0.84, 0.84, 0.84]}>
+      {/* Shared orbit ring */}
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[2.4, 0.022, 8, 100]} />
+        <AtomMaterial id="rocheLobes" activeFeature={activeFeature} viewMode={viewMode} color="#ff8a65" opacity={0.28} roughness={0.6} metalness={0.1} />
+      </mesh>
+
+      {/* Primary star */}
+      <group position={[1.3, 0, 0]}>
+        <mesh>
+          <sphereGeometry args={[1.5, 16, 16]} />
+          <AtomMaterial id="primaryStar" activeFeature={activeFeature} viewMode={viewMode} color="#ff7043" opacity={0.06} />
+        </mesh>
+        <mesh castShadow receiveShadow>
+          <sphereGeometry args={[1.05, 40, 40]} />
+          <AtomMaterial id="primaryStar" activeFeature={activeFeature} viewMode={viewMode} color="#ff7043" roughness={0.55} metalness={0.05} />
+        </mesh>
+        <mesh>
+          <sphereGeometry args={[0.5, 24, 24]} />
+          <AtomMaterial id="primaryStar" activeFeature={activeFeature} viewMode={viewMode} color="#fff9c4" opacity={crossSection ? 0.85 : 0.35} roughness={0.3} metalness={0.05} />
+        </mesh>
+      </group>
+
+      {/* Secondary star */}
+      <group position={[-1.6, 0, 0]}>
+        <mesh>
+          <sphereGeometry args={[1.15, 16, 16]} />
+          <AtomMaterial id="secondaryStar" activeFeature={activeFeature} viewMode={viewMode} color="#ffccbc" opacity={0.05} />
+        </mesh>
+        <mesh castShadow receiveShadow>
+          <sphereGeometry args={[0.78, 36, 36]} />
+          <AtomMaterial id="secondaryStar" activeFeature={activeFeature} viewMode={viewMode} color="#ffccbc" roughness={0.58} metalness={0.04} />
+        </mesh>
+        <mesh>
+          <sphereGeometry args={[0.35, 24, 24]} />
+          <AtomMaterial id="secondaryStar" activeFeature={activeFeature} viewMode={viewMode} color="#fff9c4" opacity={crossSection ? 0.85 : 0.28} roughness={0.3} metalness={0.05} />
+        </mesh>
+      </group>
+
+      {/* Roche lobe outlines */}
+      <mesh position={[1.3, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[1.12, 0.018, 8, 60]} />
+        <AtomMaterial id="rocheLobes" activeFeature={activeFeature} viewMode={viewMode} color="#ff8a65" opacity={0.22} roughness={0.5} metalness={0.1} />
+      </mesh>
+      <mesh position={[-1.6, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.85, 0.016, 8, 60]} />
+        <AtomMaterial id="rocheLobes" activeFeature={activeFeature} viewMode={viewMode} color="#ff8a65" opacity={0.18} roughness={0.5} metalness={0.1} />
+      </mesh>
+
+      {/* Accretion stream */}
+      <mesh geometry={streamGeometry}>
+        <AtomMaterial id="accretionStream" activeFeature={activeFeature} viewMode={viewMode} color="#bf360c" opacity={crossSection ? 0.55 : 0.72} roughness={0.4} metalness={0.25} />
+      </mesh>
+    </group>
+  );
+}
+
 // ── Model router ─────────────────────────────────────────────────────────────
 
 function CosmicModel({
@@ -519,6 +630,7 @@ function CosmicModel({
       {object.modelKind === "blackHole" && <BlackHoleModel {...common} />}
       {object.modelKind === "exoplanet" && <ExoplanetModel {...common} />}
       {object.modelKind === "galaxy" && <GalaxyModel {...common} />}
+      {object.modelKind === "binaryStar" && <BinaryStarModel {...common} />}
     </group>
   );
 }

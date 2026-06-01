@@ -458,7 +458,12 @@ function BottomPanels({ object, activeObservation, onObservationChange, onCompar
         <div className="panel-heading">
           <span>
             Observations
-            <Info size={16} />
+            <span className="info-tip">
+              <Info size={16} />
+              <span className="info-tip-body">
+                Switch between imaging methods—optical, radio, X-ray—to observe this object through different scientific lenses.
+              </span>
+            </span>
           </span>
         </div>
         <div className="micro-card-row">
@@ -485,7 +490,12 @@ function BottomPanels({ object, activeObservation, onObservationChange, onCompar
         <div className="panel-heading">
           <span>
             Compare Objects
-            <Info size={16} />
+            <span className="info-tip">
+              <Info size={16} />
+              <span className="info-tip-body">
+                Compare this object's physical properties, scale, and lifecycle against a contrasting cosmic counterpart.
+              </span>
+            </span>
           </span>
         </div>
         <div className="compare-row">
