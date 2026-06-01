@@ -729,6 +729,164 @@ function BinaryStarModel({ activeFeature, viewMode, crossSection, activeObservat
   );
 }
 
+// Electron — layered 1s probability cloud + spin axis + point charge core
+function ElectronModel({ activeFeature, viewMode }: CommonModelProps) {
+  return (
+    <group scale={[1.15, 1.15, 1.15]}>
+      {/* 1s probability cloud — three nested shells encoding density gradient */}
+      <mesh>
+        <sphereGeometry args={[1.9, 32, 32]} />
+        <AtomMaterial id="orbitalCloud" activeFeature={activeFeature} viewMode={viewMode} color="#4fc3f7" opacity={0.06} />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[1.3, 32, 32]} />
+        <AtomMaterial id="orbitalCloud" activeFeature={activeFeature} viewMode={viewMode} color="#29b6f6" opacity={0.13} />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[0.72, 32, 32]} />
+        <AtomMaterial id="orbitalCloud" activeFeature={activeFeature} viewMode={viewMode} color="#0288d1" opacity={0.28} />
+      </mesh>
+      {/* Spin axis — tilted 30° as a reminder spin is not a classical rotation */}
+      <mesh rotation={[0.52, 0, 0]}>
+        <cylinderGeometry args={[0.026, 0.026, 3.4, 8]} />
+        <AtomMaterial id="spin" activeFeature={activeFeature} viewMode={viewMode} color="#b3e5fc" opacity={0.55} />
+      </mesh>
+      <mesh position={[0, 1.88, 0]} rotation={[0.52, 0, 0]}>
+        <coneGeometry args={[0.11, 0.38, 8]} />
+        <AtomMaterial id="spin" activeFeature={activeFeature} viewMode={viewMode} color="#b3e5fc" opacity={0.72} />
+      </mesh>
+      {/* Point charge core */}
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[0.19, 24, 24]} />
+        <AtomMaterial id="electronCharge" activeFeature={activeFeature} viewMode={viewMode} color="#e1f5fe" roughness={0.28} metalness={0.08} />
+      </mesh>
+    </group>
+  );
+}
+
+// Hydrogen Atom — proton nucleus + animated electron on Bohr orbit + energy level rings
+function HydrogenAtomModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+  const orbitalRef = useRef<Group>(null);
+  useFrame(({ clock }) => {
+    if (orbitalRef.current) orbitalRef.current.rotation.y = clock.elapsedTime * 0.85;
+  });
+
+  return (
+    <group scale={[0.9, 0.9, 0.9]}>
+      {/* 1s electron probability cloud */}
+      <mesh>
+        <sphereGeometry args={[2.1, 32, 32]} />
+        <AtomMaterial id="electronOrbital" activeFeature={activeFeature} viewMode={viewMode} color="#4fc3f7" opacity={0.05} />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[1.55, 32, 32]} />
+        <AtomMaterial id="electronOrbital" activeFeature={activeFeature} viewMode={viewMode} color="#29b6f6" opacity={0.09} />
+      </mesh>
+      {/* Energy level shell rings n=1,2,3 */}
+      {([1.55, 2.8, 4.1] as number[]).map((r, i) => (
+        <mesh key={i} rotation={[Math.PI / 2, i * 0.42, 0]}>
+          <torusGeometry args={[r, 0.015, 8, 72]} />
+          <AtomMaterial id="energyLevels" activeFeature={activeFeature} viewMode={viewMode} color="#e1f5fe" opacity={0.22 - i * 0.05} />
+        </mesh>
+      ))}
+      {/* Bohr orbit ring + electron marker */}
+      <group ref={orbitalRef}>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[1.55, 0.022, 8, 80]} />
+          <AtomMaterial id="electronOrbital" activeFeature={activeFeature} viewMode={viewMode} color="#b3e5fc" opacity={0.55} />
+        </mesh>
+        <Atom id="electronOrbital" position={[1.55, 0, 0]} radius={0.15} color="#29b6f6" activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
+      </group>
+      {/* Proton nucleus */}
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[0.26, 28, 28]} />
+        <AtomMaterial id="protonCore" activeFeature={activeFeature} viewMode={viewMode} color="#ef9a9a" roughness={0.5} metalness={0.08} />
+      </mesh>
+    </group>
+  );
+}
+
+// Alpha Particle (He-4) — 4 nucleons in tetrahedral arrangement, strong-force bonds, binding glow
+function AlphaParticleModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+  // Regular tetrahedron inscribed in sphere of radius k: vertices at (±k, ±k, ±k) choosing
+  // even permutations of sign so each vertex is distinct and no two share an axis.
+  const k = 0.46;
+  const protonPositions: [number, number, number][] = [[ k,  k,  k], [ k, -k, -k]];
+  const neutronPositions: [number, number, number][] = [[-k,  k, -k], [-k, -k,  k]];
+  const all: [number, number, number][] = [...protonPositions, ...neutronPositions];
+  const bonds: [number, number][] = [];
+  for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) bonds.push([i, j]);
+
+  return (
+    <group scale={[1.15, 1.15, 1.15]}>
+      {/* Nuclear binding glow */}
+      <mesh>
+        <sphereGeometry args={[0.65, 24, 24]} />
+        <AtomMaterial id="nuclearBinding" activeFeature={activeFeature} viewMode={viewMode} color="#ffcc02" opacity={crossSection ? 0.38 : 0.14} />
+      </mesh>
+      {/* 6 strong-force bonds between all nucleon pairs */}
+      {bonds.map(([a, b], i) => (
+        <Bond key={i} id="nuclearBinding" from={all[a]} to={all[b]} radius={0.036} color="#ff8f00" activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
+      ))}
+      {/* 2 protons (red) */}
+      {protonPositions.map((pos, i) => (
+        <Atom key={`p-${i}`} id="protonPair" position={pos} radius={0.3} color="#e53935" activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
+      ))}
+      {/* 2 neutrons (slate-blue) */}
+      {neutronPositions.map((pos, i) => (
+        <Atom key={`n-${i}`} id="neutronPair" position={pos} radius={0.3} color="#78909c" activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
+      ))}
+    </group>
+  );
+}
+
+// Neutrino — ghostly sphere + three slowly-rotating flavor rings + propagation arrow
+function NeutrinoModel({ activeFeature, viewMode }: CommonModelProps) {
+  const flavorRef = useRef<Group>(null);
+  useFrame(({ clock }) => {
+    if (flavorRef.current) flavorRef.current.rotation.y = clock.elapsedTime * 0.42;
+  });
+
+  return (
+    <group>
+      {/* Outer halo — barely there */}
+      <mesh>
+        <sphereGeometry args={[1.1, 24, 24]} />
+        <AtomMaterial id="masslessness" activeFeature={activeFeature} viewMode={viewMode} color="#ede7f6" opacity={0.04} />
+      </mesh>
+      {/* Three flavor rings: νₑ (blue), νμ (purple), ντ (green) at different orientations */}
+      <group ref={flavorRef}>
+        <mesh>
+          <torusGeometry args={[1.45, 0.036, 8, 72]} />
+          <AtomMaterial id="flavorOscillation" activeFeature={activeFeature} viewMode={viewMode} color="#4fc3f7" opacity={0.50} />
+        </mesh>
+        <mesh rotation={[Math.PI * 0.66, Math.PI * 0.33, 0]}>
+          <torusGeometry args={[1.45, 0.036, 8, 72]} />
+          <AtomMaterial id="flavorOscillation" activeFeature={activeFeature} viewMode={viewMode} color="#ce93d8" opacity={0.40} />
+        </mesh>
+        <mesh rotation={[Math.PI * 0.33, Math.PI * 0.66, 0]}>
+          <torusGeometry args={[1.45, 0.036, 8, 72]} />
+          <AtomMaterial id="flavorOscillation" activeFeature={activeFeature} viewMode={viewMode} color="#a5d6a7" opacity={0.30} />
+        </mesh>
+      </group>
+      {/* Ghostly particle */}
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[0.26, 24, 24]} />
+        <AtomMaterial id="masslessness" activeFeature={activeFeature} viewMode={viewMode} color="#f3e5f5" opacity={0.28} roughness={0.2} metalness={0.0} />
+      </mesh>
+      {/* Propagation arrow (weak interaction direction) */}
+      <mesh position={[1.65, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.02, 0.02, 0.72, 8]} />
+        <AtomMaterial id="weakInteraction" activeFeature={activeFeature} viewMode={viewMode} color="#b39ddb" opacity={0.30} />
+      </mesh>
+      <mesh position={[2.1, 0, 0]} rotation={[0, 0, -Math.PI / 2]}>
+        <coneGeometry args={[0.09, 0.40, 8]} />
+        <AtomMaterial id="weakInteraction" activeFeature={activeFeature} viewMode={viewMode} color="#b39ddb" opacity={0.38} />
+      </mesh>
+    </group>
+  );
+}
+
 // ── Model router ─────────────────────────────────────────────────────────────
 
 function CosmicModel({
@@ -753,6 +911,10 @@ function CosmicModel({
     <group ref={group} position={[0, 0, 0]}>
       {object.modelKind === "emWave" && <EMWaveModel {...common} />}
       {object.modelKind === "proton" && <ProtonModel {...common} />}
+      {object.modelKind === "electron" && <ElectronModel {...common} />}
+      {object.modelKind === "hydrogenAtom" && <HydrogenAtomModel {...common} />}
+      {object.modelKind === "alphaParticle" && <AlphaParticleModel {...common} />}
+      {object.modelKind === "neutrino" && <NeutrinoModel {...common} />}
     </group>
   );
 }
