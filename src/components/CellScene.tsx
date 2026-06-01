@@ -887,6 +887,319 @@ function NeutrinoModel({ activeFeature, viewMode }: CommonModelProps) {
   );
 }
 
+// Double-Slit — barrier with two gaps, Huygens wavelets, interference screen, animated particle
+function DoubleSlit({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+  const particleRef = useRef<Mesh>(null);
+  useFrame(({ clock }) => {
+    if (!particleRef.current) return;
+    const t = (clock.elapsedTime * 0.38) % 1;
+    particleRef.current.position.set(-2.8 + t * 5.2, Math.sin(t * Math.PI * 4) * 0.06, 0);
+    (particleRef.current.material as MeshStandardMaterial).opacity = t < 0.88 ? 0.9 : ((1 - t) / 0.12) * 0.9;
+  });
+
+  const screenDots = useMemo(() => {
+    const dots: { y: number; r: number }[] = [];
+    for (let i = -9; i <= 9; i++) {
+      const y = i * 0.21;
+      const I = Math.cos(2.8 * y) ** 2 * Math.exp(-(y * y) / 3.0);
+      dots.push({ y, r: Math.max(0.022, I * 0.15) });
+    }
+    return dots;
+  }, []);
+
+  return (
+    <group scale={[0.86, 0.86, 0.86]}>
+      {/* Source */}
+      <Atom id="particleImpact" position={[-3.0, 0, 0]} radius={0.16} color="#ffd740" activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
+      {/* Barrier — three boxes framing two slits at y ≈ ±0.57 */}
+      <mesh position={[0,  1.34, 0]}><boxGeometry args={[0.2, 1.52, 1.0]} /><AtomMaterial id="measurementEffect" activeFeature={activeFeature} viewMode={viewMode} color="#b39ddb" opacity={crossSection ? 0.55 : 0.74} roughness={0.6} metalness={0.1} /></mesh>
+      <mesh position={[0,  0,    0]}><boxGeometry args={[0.2, 0.36, 1.0]} /><AtomMaterial id="measurementEffect" activeFeature={activeFeature} viewMode={viewMode} color="#b39ddb" opacity={crossSection ? 0.55 : 0.74} roughness={0.6} metalness={0.1} /></mesh>
+      <mesh position={[0, -1.34, 0]}><boxGeometry args={[0.2, 1.52, 1.0]} /><AtomMaterial id="measurementEffect" activeFeature={activeFeature} viewMode={viewMode} color="#b39ddb" opacity={crossSection ? 0.55 : 0.74} roughness={0.6} metalness={0.1} /></mesh>
+      {/* Huygens wavelets from each slit */}
+      {([0.57, -0.57] as number[]).map((sy, si) =>
+        ([0.55, 1.1, 1.65] as number[]).map((r, ri) => (
+          <mesh key={`w${si}${ri}`} position={[0, sy, 0]} rotation={[0, Math.PI / 2, 0]}>
+            <torusGeometry args={[r, 0.016, 8, 48]} />
+            <AtomMaterial id="waveInterference" activeFeature={activeFeature} viewMode={viewMode} color="#7c4dff" opacity={0.24 - ri * 0.06} />
+          </mesh>
+        ))
+      )}
+      {/* Detection screen */}
+      <mesh position={[2.55, 0, 0]}><boxGeometry args={[0.07, 4.0, 0.75]} /><AtomMaterial id="waveInterference" activeFeature={activeFeature} viewMode={viewMode} color="#1a237e" opacity={0.45} roughness={0.8} metalness={0} /></mesh>
+      {screenDots.map(({ y, r }, i) => (
+        <Atom key={i} id="particleImpact" position={[2.52, y, 0]} radius={r} color="#ffd740" opacity={0.82} activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
+      ))}
+      {/* Animated quantum particle */}
+      <mesh ref={particleRef}>
+        <sphereGeometry args={[0.1, 12, 12]} />
+        <meshStandardMaterial color="#ffd740" transparent opacity={0.9} emissive="#ffd740" emissiveIntensity={0.5} />
+      </mesh>
+    </group>
+  );
+}
+
+// Quantum Tunneling — incident wave + barrier + evanescent decay + transmitted wave
+function QuantumTunnelingModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+  const nPts = 36;
+  const incidentGeo = useMemo(() => {
+    const pts: Vector3[] = [];
+    for (let i = 0; i <= nPts; i++) {
+      const x = -3.1 + (i / nPts) * 2.35;
+      pts.push(new Vector3(x, 0.72 * Math.sin((i / nPts) * Math.PI * 3.5), 0));
+    }
+    return new TubeGeometry(new CatmullRomCurve3(pts), 64, 0.055, 8, false);
+  }, []);
+
+  const evanescentGeo = useMemo(() => {
+    const pts: Vector3[] = [];
+    for (let i = 0; i <= 20; i++) {
+      const x = -0.75 + (i / 20) * 1.5;
+      const y = 0.72 * Math.exp(-3.2 * (i / 20)) * Math.cos((i / 20) * Math.PI * 1.4);
+      pts.push(new Vector3(x, y, 0));
+    }
+    return new TubeGeometry(new CatmullRomCurve3(pts), 48, 0.044, 8, false);
+  }, []);
+
+  const transmittedGeo = useMemo(() => {
+    const pts: Vector3[] = [];
+    for (let i = 0; i <= nPts; i++) {
+      const x = 0.75 + (i / nPts) * 2.35;
+      pts.push(new Vector3(x, 0.28 * Math.sin((i / nPts) * Math.PI * 3.5), 0));
+    }
+    return new TubeGeometry(new CatmullRomCurve3(pts), 64, 0.044, 8, false);
+  }, []);
+
+  const reflectedGeo = useMemo(() => {
+    const pts: Vector3[] = [];
+    for (let i = 0; i <= 20; i++) {
+      const x = -3.1 + (i / 20) * 2.35;
+      pts.push(new Vector3(x, -0.22 * Math.sin((i / 20) * Math.PI * 3.5 + 0.6), 0));
+    }
+    return new TubeGeometry(new CatmullRomCurve3(pts), 48, 0.032, 8, false);
+  }, []);
+
+  return (
+    <group>
+      {/* Incident wave */}
+      <mesh geometry={incidentGeo} castShadow>
+        <AtomMaterial id="incidentWave" activeFeature={activeFeature} viewMode={viewMode} color="#00897b" roughness={0.28} metalness={0.15} />
+      </mesh>
+      {/* Reflected wave */}
+      <mesh geometry={reflectedGeo} castShadow>
+        <AtomMaterial id="incidentWave" activeFeature={activeFeature} viewMode={viewMode} color="#4db6ac" opacity={0.6} roughness={0.3} metalness={0.1} />
+      </mesh>
+      {/* Potential barrier */}
+      <mesh position={[0, 0, 0]}>
+        <boxGeometry args={[1.5, 2.4, 0.9]} />
+        <AtomMaterial id="barrierRegion" activeFeature={activeFeature} viewMode={viewMode} color="#004d40" opacity={crossSection ? 0.55 : 0.28} roughness={0.7} metalness={0.1} />
+      </mesh>
+      {/* Evanescent decay inside barrier */}
+      <mesh geometry={evanescentGeo} castShadow>
+        <AtomMaterial id="barrierRegion" activeFeature={activeFeature} viewMode={viewMode} color="#a7ffeb" opacity={0.65} roughness={0.25} metalness={0.1} />
+      </mesh>
+      {/* Transmitted wave */}
+      <mesh geometry={transmittedGeo} castShadow>
+        <AtomMaterial id="transmittedWave" activeFeature={activeFeature} viewMode={viewMode} color="#00bfa5" roughness={0.28} metalness={0.15} />
+      </mesh>
+    </group>
+  );
+}
+
+// Bloch Sphere — qubit state space with precessing state vector
+function BlochSphereModel({ activeFeature, viewMode }: CommonModelProps) {
+  const stateRef = useRef<Group>(null);
+  useFrame(({ clock }) => {
+    if (stateRef.current) stateRef.current.rotation.y = clock.elapsedTime * 0.65;
+  });
+
+  return (
+    <group scale={[1.05, 1.05, 1.05]}>
+      {/* Sphere */}
+      <mesh>
+        <sphereGeometry args={[1.5, 32, 32]} />
+        <AtomMaterial id="probabilityAmplitudes" activeFeature={activeFeature} viewMode={viewMode} color="#e8eaf6" opacity={0.07} />
+      </mesh>
+      {/* Equatorial ring (equal superposition) */}
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[1.5, 0.018, 8, 80]} />
+        <AtomMaterial id="probabilityAmplitudes" activeFeature={activeFeature} viewMode={viewMode} color="#7986cb" opacity={0.55} />
+      </mesh>
+      {/* Z axis */}
+      <mesh>
+        <cylinderGeometry args={[0.022, 0.022, 3.8, 8]} />
+        <AtomMaterial id="measurement" activeFeature={activeFeature} viewMode={viewMode} color="#c5cae9" opacity={0.45} />
+      </mesh>
+      {/* |0⟩ pole (north) */}
+      <mesh position={[0, 1.5, 0]}>
+        <sphereGeometry args={[0.14, 16, 16]} />
+        <AtomMaterial id="measurement" activeFeature={activeFeature} viewMode={viewMode} color="#ffffff" roughness={0.3} />
+      </mesh>
+      {/* |1⟩ pole (south) */}
+      <mesh position={[0, -1.5, 0]}>
+        <sphereGeometry args={[0.14, 16, 16]} />
+        <AtomMaterial id="measurement" activeFeature={activeFeature} viewMode={viewMode} color="#9fa8da" roughness={0.3} />
+      </mesh>
+      {/* X and Y axis guidelines */}
+      {([0, 1, 2] as const).map((i) => (
+        <mesh key={i} rotation={[0, (i * Math.PI) / 3, Math.PI / 2]}>
+          <cylinderGeometry args={[0.01, 0.01, 3.0, 6]} />
+          <AtomMaterial id="probabilityAmplitudes" activeFeature={activeFeature} viewMode={viewMode} color="#5c6bc0" opacity={0.22} />
+        </mesh>
+      ))}
+      {/* Precessing state vector */}
+      <group ref={stateRef} rotation={[0.72, 0, 0]}>
+        <mesh position={[0, 0.62, 0]}>
+          <cylinderGeometry args={[0.045, 0.045, 1.24, 8]} />
+          <AtomMaterial id="quantumState" activeFeature={activeFeature} viewMode={viewMode} color="#3949ab" roughness={0.2} metalness={0.2} />
+        </mesh>
+        <mesh position={[0, 1.35, 0]}>
+          <coneGeometry args={[0.12, 0.38, 8]} />
+          <AtomMaterial id="quantumState" activeFeature={activeFeature} viewMode={viewMode} color="#3949ab" roughness={0.2} metalness={0.2} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+// Quantum Entanglement — two anti-correlated spin-½ particles orbiting their barycentre
+function EntanglementModel({ activeFeature, viewMode }: CommonModelProps) {
+  const pairRef = useRef<Group>(null);
+  useFrame(({ clock }) => {
+    if (pairRef.current) pairRef.current.rotation.y = clock.elapsedTime * 0.55;
+  });
+
+  const sep = 1.9;
+
+  return (
+    <group>
+      {/* Orbit path */}
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[sep, 0.014, 8, 80]} />
+        <AtomMaterial id="nonLocality" activeFeature={activeFeature} viewMode={viewMode} color="#f48fb1" opacity={0.22} />
+      </mesh>
+      <group ref={pairRef}>
+        {/* Bell pair correlation beam */}
+        <Bond id="nonLocality" from={[-sep, 0, 0]} to={[sep, 0, 0]} radius={0.022} color="#f06292" activeFeature={activeFeature} viewMode={viewMode} crossSection={false} />
+        {/* Particle A — spin ↑ */}
+        <group position={[sep, 0, 0]}>
+          <mesh castShadow receiveShadow><sphereGeometry args={[0.32, 24, 24]} /><AtomMaterial id="entangledPair" activeFeature={activeFeature} viewMode={viewMode} color="#e91e63" roughness={0.45} metalness={0.08} /></mesh>
+          <mesh position={[0, 0.58, 0]}><cylinderGeometry args={[0.04, 0.04, 0.56, 8]} /><AtomMaterial id="spinCorrelation" activeFeature={activeFeature} viewMode={viewMode} color="#f8bbd0" opacity={0.85} /></mesh>
+          <mesh position={[0, 0.98, 0]}><coneGeometry args={[0.1, 0.28, 8]} /><AtomMaterial id="spinCorrelation" activeFeature={activeFeature} viewMode={viewMode} color="#f8bbd0" opacity={0.9} /></mesh>
+        </group>
+        {/* Particle B — spin ↓ (anti-correlated) */}
+        <group position={[-sep, 0, 0]}>
+          <mesh castShadow receiveShadow><sphereGeometry args={[0.32, 24, 24]} /><AtomMaterial id="entangledPair" activeFeature={activeFeature} viewMode={viewMode} color="#e91e63" roughness={0.45} metalness={0.08} /></mesh>
+          <mesh position={[0, -0.58, 0]} rotation={[Math.PI, 0, 0]}><cylinderGeometry args={[0.04, 0.04, 0.56, 8]} /><AtomMaterial id="spinCorrelation" activeFeature={activeFeature} viewMode={viewMode} color="#f8bbd0" opacity={0.85} /></mesh>
+          <mesh position={[0, -0.98, 0]} rotation={[Math.PI, 0, 0]}><coneGeometry args={[0.1, 0.28, 8]} /><AtomMaterial id="spinCorrelation" activeFeature={activeFeature} viewMode={viewMode} color="#f8bbd0" opacity={0.9} /></mesh>
+        </group>
+      </group>
+    </group>
+  );
+}
+
+// Uncertainty Principle — two wave packets showing Δx·Δp trade-off side by side
+function UncertaintyPrincipleModel({ activeFeature, viewMode }: CommonModelProps) {
+  const narrow = useMemo(() => {
+    const pts: Vector3[] = [];
+    for (let i = 0; i <= 50; i++) {
+      const x = -2.8 + (i / 50) * 2.6;
+      const gauss = Math.exp(-(x * x) / 0.18);
+      pts.push(new Vector3(x, 0.85 * gauss * Math.cos(x * 11), 0));
+    }
+    return new TubeGeometry(new CatmullRomCurve3(pts), 64, 0.05, 8, false);
+  }, []);
+
+  const broad = useMemo(() => {
+    const pts: Vector3[] = [];
+    for (let i = 0; i <= 50; i++) {
+      const x = 0.2 + (i / 50) * 2.6;
+      const gauss = Math.exp(-((x - 1.5) ** 2) / 1.8);
+      pts.push(new Vector3(x, 0.52 * gauss * Math.cos((x - 1.5) * 3.2), 0));
+    }
+    return new TubeGeometry(new CatmullRomCurve3(pts), 64, 0.05, 8, false);
+  }, []);
+
+  return (
+    <group>
+      {/* Narrow (position-localised) wave packet — Δx small */}
+      <mesh geometry={narrow} castShadow>
+        <AtomMaterial id="positionBasis" activeFeature={activeFeature} viewMode={viewMode} color="#f57c00" roughness={0.28} metalness={0.12} />
+      </mesh>
+      {/* Δx bracket */}
+      <mesh position={[-1.5, -0.5, 0]}><boxGeometry args={[0.6, 0.05, 0.05]} /><AtomMaterial id="positionBasis" activeFeature={activeFeature} viewMode={viewMode} color="#ffcc80" opacity={0.6} /></mesh>
+      {/* Broad (momentum-localised) wave packet — Δp small */}
+      <mesh geometry={broad} castShadow>
+        <AtomMaterial id="momentumBasis" activeFeature={activeFeature} viewMode={viewMode} color="#ffb74d" roughness={0.28} metalness={0.12} />
+      </mesh>
+      {/* Δp bracket */}
+      <mesh position={[1.5, -0.5, 0]}><boxGeometry args={[2.2, 0.05, 0.05]} /><AtomMaterial id="momentumBasis" activeFeature={activeFeature} viewMode={viewMode} color="#ffe082" opacity={0.6} /></mesh>
+      {/* Trade-off connector */}
+      <mesh position={[-0.25, 0, 0]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[0.016, 0.016, 2.8, 6]} /><AtomMaterial id="tradeoff" activeFeature={activeFeature} viewMode={viewMode} color="#ffe082" opacity={0.3} /></mesh>
+    </group>
+  );
+}
+
+// Quantum Harmonic Oscillator — parabolic well + 5 Hermite-Gauss wavefunctions
+function HarmonicOscillatorModel({ activeFeature, viewMode }: CommonModelProps) {
+  const yOffsets = [-1.8, -0.9, 0.0, 0.9, 1.8];
+  const featureIds = ["zeroPointEnergy", "excitedStates", "excitedStates", "excitedStates", "classicalTurningPoints"];
+  const colors = ["#42a5f5", "#1e88e5", "#1565c0", "#7c4dff", "#9575cd"];
+
+  const wavefunctions = useMemo(() => {
+    const Hn = (n: number, x: number): number => {
+      switch (n) {
+        case 0: return 1;
+        case 1: return x;
+        case 2: return x * x - 0.5;
+        case 3: return x * x * x - 1.5 * x;
+        case 4: return x ** 4 - 3 * x ** 2 + 0.375;
+        default: return 1;
+      }
+    };
+    return yOffsets.map((yOff, n) => {
+      const pts: Vector3[] = [];
+      for (let i = 0; i <= 48; i++) {
+        const x = -2.5 + (i / 48) * 5.0;
+        const gauss = Math.exp(-(x * x) / 2.8);
+        const amp = 0.38 * Hn(n, x * 1.1) * gauss;
+        pts.push(new Vector3(x, yOff + Math.max(-0.4, Math.min(0.4, amp)), 0));
+      }
+      return new TubeGeometry(new CatmullRomCurve3(pts), 64, 0.04, 8, false);
+    });
+  }, []);
+
+  const wellGeometry = useMemo(() => {
+    const pts: Vector3[] = [];
+    for (let i = 0; i <= 40; i++) {
+      const x = -2.6 + (i / 40) * 5.2;
+      pts.push(new Vector3(x, -2.5 + x * x * 0.36, 0));
+    }
+    return new TubeGeometry(new CatmullRomCurve3(pts), 64, 0.03, 8, false);
+  }, []);
+
+  return (
+    <group scale={[0.88, 0.88, 0.88]}>
+      {/* Potential well outline */}
+      <mesh geometry={wellGeometry} castShadow>
+        <AtomMaterial id="classicalTurningPoints" activeFeature={activeFeature} viewMode={viewMode} color="#90caf9" opacity={0.45} roughness={0.3} />
+      </mesh>
+      {/* Energy level reference planes */}
+      {yOffsets.map((y, i) => (
+        <mesh key={`el-${i}`} position={[0, y, 0]}>
+          <boxGeometry args={[5.0, 0.016, 0.6]} />
+          <AtomMaterial id={featureIds[i]} activeFeature={activeFeature} viewMode={viewMode} color={colors[i]} opacity={0.3} />
+        </mesh>
+      ))}
+      {/* Wavefunction tubes */}
+      {wavefunctions.map((geo, i) => (
+        <mesh key={`wf-${i}`} geometry={geo} castShadow>
+          <AtomMaterial id={featureIds[i]} activeFeature={activeFeature} viewMode={viewMode} color={colors[i]} roughness={0.25} metalness={0.1} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 // ── Model router ─────────────────────────────────────────────────────────────
 
 function CosmicModel({
@@ -915,6 +1228,12 @@ function CosmicModel({
       {object.modelKind === "hydrogenAtom" && <HydrogenAtomModel {...common} />}
       {object.modelKind === "alphaParticle" && <AlphaParticleModel {...common} />}
       {object.modelKind === "neutrino" && <NeutrinoModel {...common} />}
+      {object.modelKind === "doubleSlit" && <DoubleSlit {...common} />}
+      {object.modelKind === "quantumTunneling" && <QuantumTunnelingModel {...common} />}
+      {object.modelKind === "blochSphere" && <BlochSphereModel {...common} />}
+      {object.modelKind === "entanglement" && <EntanglementModel {...common} />}
+      {object.modelKind === "uncertaintyPrinciple" && <UncertaintyPrincipleModel {...common} />}
+      {object.modelKind === "harmonicOscillator" && <HarmonicOscillatorModel {...common} />}
     </group>
   );
 }
