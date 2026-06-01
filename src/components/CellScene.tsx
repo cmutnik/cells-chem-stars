@@ -1,24 +1,18 @@
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Center, ContactShadows, Float, Html, OrbitControls, useGLTF, useProgress } from "@react-three/drei";
+import { Center, ContactShadows, Float, Html, OrbitControls, useProgress } from "@react-three/drei";
 import { Suspense, useMemo, useRef } from "react";
 import {
-  Color,
   CatmullRomCurve3,
-  DoubleSide,
-  Float32BufferAttribute,
   Group,
-  Mesh,
-  MeshStandardMaterial,
   TubeGeometry,
   Vector3,
-  type Material,
   type MeshStandardMaterialParameters,
 } from "three";
-import type { MoleculeItem, MoleculeModelAsset, ViewMode } from "../data/molecules";
+import type { CosmicObject, ViewMode } from "../data/cosmicObjects";
 
-type MoleculeSceneProps = {
-  molecule: MoleculeItem;
-  activeComponent: string;
+type CosmicSceneProps = {
+  object: CosmicObject;
+  activeFeature: string;
   viewMode: ViewMode;
   crossSection: boolean;
   autoRotate: boolean;
@@ -27,7 +21,7 @@ type MoleculeSceneProps = {
 
 type MaterialProps = {
   id: string;
-  activeComponent: string;
+  activeFeature: string;
   viewMode: ViewMode;
   color: string;
   opacity?: number;
@@ -37,14 +31,14 @@ type MaterialProps = {
 
 function AtomMaterial({
   id,
-  activeComponent,
+  activeFeature,
   viewMode,
   color,
   opacity = 1,
   roughness = 0.38,
   metalness = 0.12,
 }: MaterialProps) {
-  const active = id === activeComponent;
+  const active = id === activeFeature;
   const dimmed = viewMode === "focus" && !active;
   const material: MeshStandardMaterialParameters = {
     color,
@@ -60,7 +54,7 @@ function AtomMaterial({
 }
 
 type CommonModelProps = {
-  activeComponent: string;
+  activeFeature: string;
   viewMode: ViewMode;
   crossSection: boolean;
 };
@@ -73,11 +67,11 @@ type AtomProps = CommonModelProps & {
   opacity?: number;
 };
 
-function Atom({ id, position, radius, color, opacity = 1, activeComponent, viewMode, crossSection }: AtomProps) {
+function Atom({ id, position, radius, color, opacity = 1, activeFeature, viewMode }: AtomProps) {
   return (
     <mesh position={position} castShadow receiveShadow>
       <sphereGeometry args={[radius, 36, 36]} />
-      <AtomMaterial id={id} activeComponent={activeComponent} viewMode={viewMode} color={color} opacity={opacity} />
+      <AtomMaterial id={id} activeFeature={activeFeature} viewMode={viewMode} color={color} opacity={opacity} />
     </mesh>
   );
 }
@@ -90,7 +84,7 @@ type BondProps = CommonModelProps & {
   color: string;
 };
 
-function Bond({ id, from, to, radius = 0.055, color, activeComponent, viewMode, crossSection }: BondProps) {
+function Bond({ id, from, to, radius = 0.055, color, activeFeature, viewMode }: BondProps) {
   const geometry = useMemo(() => {
     const mid: [number, number, number] = [
       (from[0] + to[0]) / 2,
@@ -103,395 +97,331 @@ function Bond({ id, from, to, radius = 0.055, color, activeComponent, viewMode, 
 
   return (
     <mesh geometry={geometry} castShadow receiveShadow>
-      <AtomMaterial id={id} activeComponent={activeComponent} viewMode={viewMode} color={color} roughness={0.44} />
+      <AtomMaterial id={id} activeFeature={activeFeature} viewMode={viewMode} color={color} roughness={0.44} />
     </mesh>
   );
 }
 
-// ── Procedural asset pipeline (kept for optional GLB molecules) ──────────────
+// ── Cosmic object 3D models ───────────────────────────────────────────────────
 
-function applyAssetVertexColors(mesh: Mesh, molecule: MoleculeItem) {
-  const geometry = mesh.geometry;
-  const position = geometry.getAttribute("position");
-  if (!position) return;
+// Electromagnetic Wave — sinusoidal E and B field tubes, propagation arrow, photon sphere
+function EMWaveModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+  const nPoints = 40;
+  const xRange = 3.0;
+  const amplitude = 0.9;
 
-  geometry.computeBoundingBox();
-  const box = geometry.boundingBox;
-  if (!box) return;
-
-  const sizeX = Math.max(box.max.x - box.min.x, 0.001);
-  const sizeY = Math.max(box.max.y - box.min.y, 0.001);
-  const sizeZ = Math.max(box.max.z - box.min.z, 0.001);
-  const palette = [
-    new Color(molecule.color),
-    new Color(molecule.accent),
-    ...molecule.components.map((c) => new Color(c.color)),
-  ];
-  const highlight = new Color("#fff4d8");
-  const shadow = new Color("#3d4a72");
-  const colors: number[] = [];
-
-  for (let index = 0; index < position.count; index += 1) {
-    const x = position.getX(index);
-    const y = position.getY(index);
-    const z = position.getZ(index);
-    const nx = (x - box.min.x) / sizeX;
-    const ny = (y - box.min.y) / sizeY;
-    const nz = (z - box.min.z) / sizeZ;
-    const flow = Math.sin(nx * 11.6 + ny * 4.8) + Math.cos(ny * 9.4 + nz * 7.2);
-    const paletteIndex = Math.abs(Math.floor((flow + nx * 3.2 + ny * 2.6) * palette.length)) % palette.length;
-    const color = new Color(molecule.color).lerp(palette[paletteIndex], 0.48);
-    color.lerp(highlight, Math.max(0, nz - 0.24) * 0.22);
-    color.lerp(shadow, Math.max(0, 0.32 - nz) * 0.12);
-    colors.push(color.r, color.g, color.b);
-  }
-
-  geometry.setAttribute("color", new Float32BufferAttribute(colors, 3));
-}
-
-function createAssetMaterial({
-  original,
-  molecule,
-  viewMode,
-  crossSection,
-}: {
-  original: Mesh["material"];
-  molecule: MoleculeItem;
-  meshIndex: number;
-  viewMode: ViewMode;
-  crossSection: boolean;
-}) {
-  const source = Array.isArray(original) ? original[0] : original;
-  const sourceMaterial = source as Partial<MeshStandardMaterial>;
-  const material = new MeshStandardMaterial({
-    color: "#ffffff",
-    map: sourceMaterial.map ?? null,
-    normalMap: sourceMaterial.normalMap ?? null,
-    roughnessMap: sourceMaterial.roughnessMap ?? null,
-    metalnessMap: sourceMaterial.metalnessMap ?? null,
-    side: DoubleSide,
-    vertexColors: true,
-    transparent: crossSection || viewMode === "focus" || sourceMaterial.transparent,
-    opacity: crossSection ? 0.92 : viewMode === "focus" ? 0.95 : sourceMaterial.opacity ?? 1,
-    roughness: Math.min(0.82, sourceMaterial.roughness ?? 0.46),
-    metalness: Math.min(0.12, sourceMaterial.metalness ?? 0.03),
-    emissive: new Color(molecule.accent).lerp(new Color("#ffffff"), 0.58),
-    emissiveIntensity: viewMode === "focus" ? 0.045 : 0.016,
-  });
-  material.envMapIntensity = 0.75 * (molecule.modelAsset?.exposure ?? 1);
-  material.needsUpdate = true;
-  return material;
-}
-
-function createNativeAssetMaterial({
-  original,
-  asset,
-  crossSection,
-}: {
-  original: Mesh["material"];
-  asset: MoleculeModelAsset;
-  crossSection: boolean;
-}) {
-  const cloneMaterial = (source: Material) => {
-    const material = source.clone();
-    material.side = DoubleSide;
-    material.transparent = crossSection || material.transparent;
-    material.opacity = crossSection ? Math.min(material.opacity, 0.86) : material.opacity;
-    if (material instanceof MeshStandardMaterial) {
-      const displayMap = material.map ?? null;
-      if (displayMap) {
-        displayMap.anisotropy = 8;
-        displayMap.needsUpdate = true;
-      }
-      material.vertexColors = false;
-      material.emissive = new Color("#fff8eb");
-      material.emissiveMap = displayMap;
-      material.emissiveIntensity = 0.07 * (asset.exposure ?? 1);
-      material.envMapIntensity = 0.62 * (asset.exposure ?? 1);
-      material.roughness = Math.max(0.34, Math.min(material.roughness, 0.58));
-      material.metalness = Math.min(material.metalness, 0.08);
-      material.color.setRGB(1.04, 1.035, 1.02);
+  const eFieldGeometry = useMemo(() => {
+    const points: Vector3[] = [];
+    for (let i = 0; i <= nPoints; i++) {
+      const t = i / nPoints;
+      const x = (t - 0.5) * xRange * 2;
+      const y = amplitude * Math.sin(t * Math.PI * 2.5);
+      points.push(new Vector3(x, y, 0));
     }
-    material.needsUpdate = true;
-    return material;
-  };
-  return Array.isArray(original) ? original.map(cloneMaterial) : cloneMaterial(original);
-}
+    return new TubeGeometry(new CatmullRomCurve3(points), 64, 0.06, 10, false);
+  }, []);
 
-function AssetMoleculeModel({
-  molecule,
-  asset,
-  viewMode,
-  crossSection,
-}: CommonModelProps & {
-  molecule: MoleculeItem;
-  asset: MoleculeModelAsset;
-}) {
-  const { scene } = useGLTF(asset.url);
-  const clonedScene = useMemo(() => {
-    const clone = scene.clone(true);
-    let meshIndex = 0;
-    clone.traverse((node) => {
-      const mesh = node as Mesh;
-      if (!mesh.isMesh) return;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      if (asset.materialMode === "native") {
-        mesh.material = createNativeAssetMaterial({ original: mesh.material, asset, crossSection });
-      } else {
-        mesh.geometry.computeVertexNormals();
-        applyAssetVertexColors(mesh, molecule);
-        mesh.material = createAssetMaterial({ original: mesh.material, molecule, meshIndex, viewMode, crossSection });
-      }
-      meshIndex += 1;
-    });
-    return clone;
-  }, [molecule, scene, viewMode, crossSection]);
+  const bFieldGeometry = useMemo(() => {
+    const points: Vector3[] = [];
+    for (let i = 0; i <= nPoints; i++) {
+      const t = i / nPoints;
+      const x = (t - 0.5) * xRange * 2;
+      const z = amplitude * Math.sin(t * Math.PI * 2.5);
+      points.push(new Vector3(x, 0, z));
+    }
+    return new TubeGeometry(new CatmullRomCurve3(points), 64, 0.06, 10, false);
+  }, []);
 
   return (
-    <group position={asset.position ?? [0, 0, 0]} rotation={asset.rotation ?? [0, 0, 0]} scale={[asset.scale, asset.scale, asset.scale]}>
-      <Center>
-        <primitive object={clonedScene} />
-      </Center>
+    <group scale={[0.95, 0.95, 0.95]}>
+      {/* Propagation axis */}
+      <Bond id="eField" from={[-3.1, 0, 0]} to={[3.1, 0, 0]} radius={0.018} color="#c8c8ff" activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
+      {/* E-field sinusoidal wave (violet, Y-axis oscillation) */}
+      <mesh geometry={eFieldGeometry} castShadow>
+        <AtomMaterial id="eField" activeFeature={activeFeature} viewMode={viewMode} color="#7c4dff" opacity={crossSection ? 0.55 : 0.88} roughness={0.28} metalness={0.18} />
+      </mesh>
+      {/* B-field sinusoidal wave (teal, Z-axis oscillation) */}
+      <mesh geometry={bFieldGeometry} castShadow>
+        <AtomMaterial id="bField" activeFeature={activeFeature} viewMode={viewMode} color="#00897b" opacity={crossSection ? 0.55 : 0.88} roughness={0.28} metalness={0.18} />
+      </mesh>
+      {/* Photon sphere at E-field wave crest */}
+      <Atom id="photonPacket" position={[0, amplitude, 0]} radius={0.24} color="#ffd740" opacity={0.92} activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
+      {/* Arrow tip marking propagation direction */}
+      <Atom id="eField" position={[3.25, 0, 0]} radius={0.13} color="#c8c8ff" activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
     </group>
   );
 }
 
-// ── Molecular models ─────────────────────────────────────────────────────────
-
-// H₂O — bent, 104.5° bond angle, two lone pairs shown as faint lobes
-function WaterModel({ activeComponent, viewMode, crossSection }: CommonModelProps) {
-  return (
-    <group rotation={[0.1, -0.3, 0.05]} scale={[1.05, 1.05, 1.05]}>
-      {/* Oxygen */}
-      <Atom id="ohBond" position={[0, 0, 0]} radius={0.6} color="#cc3322" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* Hydrogen atoms at 104.5° */}
-      <Atom id="ohBond" position={[1.35, 1.02, 0]} radius={0.32} color="#e8e8e8" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Atom id="ohBond" position={[-1.35, 1.02, 0]} radius={0.32} color="#e8e8e8" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* O–H bonds */}
-      <Bond id="ohBond" from={[0, 0, 0]} to={[1.35, 1.02, 0]} radius={0.055} color="#cc8866" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Bond id="ohBond" from={[0, 0, 0]} to={[-1.35, 1.02, 0]} radius={0.055} color="#cc8866" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* Lone pair lobes */}
-      <Atom id="lonePair" position={[0.52, -0.72, 0.58]} radius={0.3} color="#9966cc" opacity={0.52} activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Atom id="lonePair" position={[-0.52, -0.72, -0.58]} radius={0.3} color="#9966cc" opacity={0.52} activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* Dipole arrow (tube pointing toward O) */}
-      <Bond id="dipole" from={[0, 0.75, 0]} to={[0, -0.55, 0]} radius={0.04} color="#2266bb" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Atom id="dipole" position={[0, -0.7, 0]} radius={0.1} color="#2266bb" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-    </group>
-  );
-}
-
-// CH₄ — tetrahedral, four C–H bonds, faint VdW sphere
-function MethaneModel({ activeComponent, viewMode, crossSection }: CommonModelProps) {
-  const hPositions: [number, number, number][] = [
-    [1.3, 1.3, 1.3],
-    [1.3, -1.3, -1.3],
-    [-1.3, 1.3, -1.3],
-    [-1.3, -1.3, 1.3],
+// Proton — central nucleon + 3 quark spheres + gluon flux tubes + charge cloud
+function ProtonModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+  const quarkPositions: [number, number, number][] = [
+    [0, 0.72, 0],
+    [-0.62, -0.36, 0],
+    [0.62, -0.36, 0],
   ];
+  const quarkColors = ["#e53935", "#e53935", "#1565c0"];
 
   return (
-    <group rotation={[0.15, -0.25, 0.08]} scale={[0.88, 0.88, 0.88]}>
-      {/* Van der Waals surface */}
+    <group scale={[1.1, 1.1, 1.1]}>
+      {/* Charge cloud (outermost) */}
       <mesh>
-        <sphereGeometry args={[2.18, 48, 48]} />
-        <AtomMaterial id="vdw" activeComponent={activeComponent} viewMode={viewMode} color="#aaccff" opacity={crossSection ? 0.06 : 0.1} />
+        <sphereGeometry args={[1.58, 32, 32]} />
+        <AtomMaterial id="charge" activeFeature={activeFeature} viewMode={viewMode} color="#ffd740" opacity={crossSection ? 0.04 : 0.08} />
       </mesh>
-      {/* Central carbon */}
-      <Atom id="carbon" position={[0, 0, 0]} radius={0.5} color="#555555" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* Hydrogen atoms and C–H bonds */}
-      {hPositions.map((pos, i) => (
-        <group key={i}>
-          <Atom id="chBond" position={pos} radius={0.3} color="#e0e0e0" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-          <Bond id="chBond" from={[0, 0, 0]} to={pos} radius={0.048} color="#999999" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-        </group>
-      ))}
-    </group>
-  );
-}
-
-// C₆H₁₂O₆ — pyranose ring with OH groups
-function GlucoseModel({ activeComponent, viewMode, crossSection }: CommonModelProps) {
-  // Hexagonal ring in XZ plane (5C + 1O)
-  const ringAtoms: Array<{ id: string; pos: [number, number, number]; color: string; radius: number }> = [
-    { id: "anomericC", pos: [1.5, 0, 0], color: "#555555", radius: 0.38 },       // C1 anomeric
-    { id: "ring", pos: [0.75, 0, 1.3], color: "#555555", radius: 0.38 },          // C2
-    { id: "ring", pos: [-0.75, 0, 1.3], color: "#555555", radius: 0.38 },         // C3
-    { id: "ring", pos: [-1.5, 0, 0], color: "#555555", radius: 0.38 },            // C4
-    { id: "ring", pos: [-0.75, 0, -1.3], color: "#555555", radius: 0.38 },        // C5
-    { id: "ring", pos: [0.75, 0, -1.3], color: "#cc4411", radius: 0.34 },         // Ring O
-  ];
-
-  // OH groups hanging below ring from each C
-  const ohOxygens: [number, number, number][] = [
-    [1.5, -1.15, 0.1],    // C1-OH
-    [0.75, -1.15, 1.4],   // C2-OH
-    [-0.75, -1.15, 1.4],  // C3-OH
-    [-1.5, -1.15, 0.1],   // C4-OH
-    [-0.75, -1.15, -1.4], // C5-OH (actually CH2OH direction)
-  ];
-
-  return (
-    <group rotation={[0.38, -0.32, 0.04]} scale={[0.95, 0.95, 0.95]}>
-      {/* Ring bonds */}
-      {ringAtoms.map((atom, i) => {
-        const next = ringAtoms[(i + 1) % 6];
+      {/* Nucleon body */}
+      <mesh>
+        <sphereGeometry args={[1.08, 32, 32]} />
+        <AtomMaterial id="charge" activeFeature={activeFeature} viewMode={viewMode} color="#b71c1c" opacity={crossSection ? 0.28 : 0.38} roughness={0.5} metalness={0.1} />
+      </mesh>
+      {/* Gluon flux tube bonds between quarks */}
+      {quarkPositions.map((pos, i) => {
+        const next = quarkPositions[(i + 1) % 3];
         return (
-          <Bond key={`rb-${i}`} id="ring" from={atom.pos} to={next.pos} radius={0.05} color="#776644" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
+          <Bond key={`g-${i}`} id="gluon" from={pos} to={next} radius={0.052} color="#ff8f00" activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
         );
       })}
-      {/* Ring atoms */}
-      {ringAtoms.map((atom, i) => (
-        <Atom key={`ra-${i}`} id={atom.id} position={atom.pos} radius={atom.radius} color={atom.color} activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
+      {/* Three quarks */}
+      {quarkPositions.map((pos, i) => (
+        <Atom key={`q-${i}`} id="quark" position={pos} radius={0.35} color={quarkColors[i]} activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
       ))}
-      {/* OH groups (only on C atoms, not ring O) */}
-      {ohOxygens.map((pos, i) => (
-        <group key={`oh-${i}`}>
-          <Bond id="hydroxyl" from={ringAtoms[i].pos} to={pos} radius={0.04} color="#cc8866" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-          <Atom id="hydroxyl" position={pos} radius={0.3} color="#cc4411" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-        </group>
-      ))}
-      {/* CH2OH exo group off C5 */}
-      <Atom id="ring" position={[-0.75, 0.08, -2.5]} radius={0.34} color="#555555" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Bond id="ring" from={[-0.75, 0, -1.3]} to={[-0.75, 0.08, -2.5]} radius={0.04} color="#776644" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Atom id="hydroxyl" position={[-0.75, -1.1, -2.5]} radius={0.3} color="#cc4411" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Bond id="hydroxyl" from={[-0.75, 0.08, -2.5]} to={[-0.75, -1.1, -2.5]} radius={0.04} color="#cc8866" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
     </group>
   );
 }
 
-// NH₃ — trigonal pyramidal, lone pair shown at apex
-function AmmoniaModel({ activeComponent, viewMode, crossSection }: CommonModelProps) {
-  const hPositions: [number, number, number][] = [
-    [1.22, -0.58, 0],
-    [-0.61, -0.58, 1.06],
-    [-0.61, -0.58, -1.06],
-  ];
-
+// Main-Sequence Star — layered spheres for zones + corona tori + granule patches
+function MainStarModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
   return (
-    <group rotation={[0.08, -0.28, 0.05]} scale={[1.05, 1.05, 1.05]}>
-      {/* Lone pair lobe at apex */}
-      <Atom id="lonePair" position={[0, 1.25, 0]} radius={0.34} color="#9966cc" opacity={0.52} activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* Nitrogen */}
-      <Atom id="nhBond" position={[0, 0.32, 0]} radius={0.52} color="#2255aa" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* Hydrogen atoms and N–H bonds */}
-      {hPositions.map((pos, i) => (
-        <group key={i}>
-          <Bond id="nhBond" from={[0, 0.32, 0]} to={pos} radius={0.052} color="#6688cc" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-          <Atom id="nhBond" position={pos} radius={0.3} color="#e0e0e0" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-        </group>
-      ))}
-      {/* Dipole arrow (pointing toward lone pair) */}
-      <Bond id="dipole" from={[0, -0.6, 0]} to={[0, 0.72, 0]} radius={0.038} color="#2266bb" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Atom id="dipole" position={[0, 0.86, 0]} radius={0.09} color="#2266bb" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-    </group>
-  );
-}
-
-// C₆H₆ — hexagonal ring, sp² C atoms, π cloud rings above/below
-function BenzeneModel({ activeComponent, viewMode, crossSection }: CommonModelProps) {
-  const r = 1.42; // ring radius
-  const angles = [0, 60, 120, 180, 240, 300].map((deg) => (deg * Math.PI) / 180);
-  const cPositions: [number, number, number][] = angles.map((a) => [r * Math.cos(a), 0, r * Math.sin(a)]);
-  const hPositions: [number, number, number][] = angles.map((a) => [2.5 * Math.cos(a), 0, 2.5 * Math.sin(a)]);
-
-  return (
-    <group rotation={[0.35, -0.18, 0.06]} scale={[1.0, 1.0, 1.0]}>
-      {/* π electron cloud — flat tori above and below ring */}
-      <mesh position={[0, 0.32, 0]}>
-        <torusGeometry args={[1.38, 0.14, 12, 60]} />
-        <AtomMaterial id="piCloud" activeComponent={activeComponent} viewMode={viewMode} color="#9933cc" opacity={crossSection ? 0.18 : 0.32} roughness={0.28} metalness={0.18} />
+    <group scale={[0.82, 0.82, 0.82]}>
+      {/* Outer glow halo */}
+      <mesh>
+        <sphereGeometry args={[2.8, 24, 24]} />
+        <AtomMaterial id="corona" activeFeature={activeFeature} viewMode={viewMode} color="#ffe082" opacity={0.04} />
       </mesh>
-      <mesh position={[0, -0.32, 0]}>
-        <torusGeometry args={[1.38, 0.14, 12, 60]} />
-        <AtomMaterial id="piCloud" activeComponent={activeComponent} viewMode={viewMode} color="#9933cc" opacity={crossSection ? 0.18 : 0.32} roughness={0.28} metalness={0.18} />
+      {/* Corona wispy torus rings at varied inclinations */}
+      {([0, 0.6, 1.1, 1.7] as number[]).map((rotX, i) => (
+        <mesh key={`cr-${i}`} rotation={[rotX, i * 0.8, 0]}>
+          <torusGeometry args={[2.12 + i * 0.08, 0.055, 8, 80]} />
+          <AtomMaterial id="corona" activeFeature={activeFeature} viewMode={viewMode} color="#ffe082" opacity={0.15} roughness={0.5} metalness={0.1} />
+        </mesh>
+      ))}
+      {/* Convective zone / photosphere surface */}
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[1.85, 48, 48]} />
+        <AtomMaterial id="convectiveZone" activeFeature={activeFeature} viewMode={viewMode} color="#ef6c00" roughness={0.6} metalness={0.08} />
       </mesh>
-      {/* C–C ring bonds */}
-      {cPositions.map((pos, i) => {
-        const next = cPositions[(i + 1) % 6];
-        return (
-          <Bond key={`cc-${i}`} id="ring" from={pos} to={next} radius={0.055} color="#c09030" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-        );
-      })}
-      {/* Carbon atoms */}
-      {cPositions.map((pos, i) => (
-        <Atom key={`c-${i}`} id="ring" position={pos} radius={0.36} color="#555555" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
+      {/* Surface granule patches */}
+      {([
+        [1.58, 0.82, 0.22], [-1.42, 1.02, 0.58], [0.38, -1.72, 0.82],
+        [1.22, -0.62, 1.42], [-0.82, -1.22, 1.02], [1.58, 0.22, -1.02],
+      ] as [number, number, number][]).map((pos, i) => (
+        <Atom key={`gr-${i}`} id="convectiveZone" position={pos} radius={0.22} color="#ff8f00" activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
       ))}
-      {/* C–H bonds and H atoms */}
-      {cPositions.map((pos, i) => (
-        <group key={`ch-${i}`}>
-          <Bond id="chBond" from={pos} to={hPositions[i]} radius={0.042} color="#999999" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-          <Atom id="chBond" position={hPositions[i]} radius={0.28} color="#e0e0e0" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-        </group>
-      ))}
+      {/* Radiative zone (inner, partially opaque) */}
+      <mesh>
+        <sphereGeometry args={[1.2, 32, 32]} />
+        <AtomMaterial id="radiativeZone" activeFeature={activeFeature} viewMode={viewMode} color="#ff8f00" opacity={crossSection ? 0.7 : 0.3} roughness={0.4} metalness={0.1} />
+      </mesh>
+      {/* Fusion core */}
+      <mesh>
+        <sphereGeometry args={[0.55, 32, 32]} />
+        <AtomMaterial id="coreFusion" activeFeature={activeFeature} viewMode={viewMode} color="#fff9c4" roughness={0.3} metalness={0.05} />
+      </mesh>
     </group>
   );
 }
 
-// CH₃CH₂OH — C–C–O chain, highlighted OH group
-function EthanolModel({ activeComponent, viewMode, crossSection }: CommonModelProps) {
+// Neutron Star — dense sphere + pulsed beam cones + magnetosphere field loops
+function NeutronStarModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+  const beamRef = useRef<Group>(null);
+
+  useFrame(({ clock }) => {
+    if (beamRef.current) {
+      const scale = 0.9 + 0.1 * Math.sin(clock.elapsedTime * 2.8);
+      beamRef.current.scale.set(1, scale, 1);
+    }
+  });
+
   return (
-    <group rotation={[0.12, -0.38, 0.08]} scale={[1.05, 1.05, 1.05]}>
-      {/* Oxygen */}
-      <Atom id="hydroxyl" position={[-1.72, 0.28, 0.18]} radius={0.45} color="#cc3322" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* O–H hydrogen */}
-      <Atom id="hydroxyl" position={[-2.28, 0.88, 0.56]} radius={0.26} color="#e0e0e0" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Bond id="hydroxyl" from={[-1.72, 0.28, 0.18]} to={[-2.28, 0.88, 0.56]} radius={0.046} color="#cc8866" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* C1 (methylene, bonded to O) */}
-      <Atom id="alkyl" position={[-0.2, 0.04, 0]} radius={0.42} color="#555555" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Bond id="hydroxyl" from={[-0.2, 0.04, 0]} to={[-1.72, 0.28, 0.18]} radius={0.056} color="#aa6644" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* C1 hydrogens */}
-      <Atom id="alkyl" position={[-0.08, -0.48, -1.05]} radius={0.26} color="#e0e0e0" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Bond id="alkyl" from={[-0.2, 0.04, 0]} to={[-0.08, -0.48, -1.05]} radius={0.042} color="#999999" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Atom id="alkyl" position={[-0.08, 1.15, -0.55]} radius={0.26} color="#e0e0e0" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Bond id="alkyl" from={[-0.2, 0.04, 0]} to={[-0.08, 1.15, -0.55]} radius={0.042} color="#999999" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* C2 (methyl) */}
-      <Atom id="alkyl" position={[1.32, -0.08, 0.04]} radius={0.42} color="#555555" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Bond id="alkyl" from={[-0.2, 0.04, 0]} to={[1.32, -0.08, 0.04]} radius={0.056} color="#888888" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* C2 methyl hydrogens */}
-      <Atom id="alkyl" position={[1.55, -1.1, 0.62]} radius={0.26} color="#e0e0e0" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Bond id="alkyl" from={[1.32, -0.08, 0.04]} to={[1.55, -1.1, 0.62]} radius={0.042} color="#999999" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Atom id="alkyl" position={[1.88, 0.82, 0.62]} radius={0.26} color="#e0e0e0" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Bond id="alkyl" from={[1.32, -0.08, 0.04]} to={[1.88, 0.82, 0.62]} radius={0.042} color="#999999" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Atom id="alkyl" position={[1.62, -0.22, -1.04]} radius={0.26} color="#e0e0e0" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Bond id="alkyl" from={[1.32, -0.08, 0.04]} to={[1.62, -0.22, -1.04]} radius={0.042} color="#999999" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* Hydrogen-bond dashed indicator */}
-      <Bond id="hBond" from={[-1.72, 0.28, 0.18]} to={[-2.95, -0.42, -0.38]} radius={0.022} color="#5599dd" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
+    <group>
+      {/* Soft glow shell */}
+      <mesh>
+        <sphereGeometry args={[1.1, 24, 24]} />
+        <AtomMaterial id="neutronCore" activeFeature={activeFeature} viewMode={viewMode} color="#b3e5fc" opacity={0.12} />
+      </mesh>
+      {/* Magnetosphere field-line loops */}
+      {([0, 0.7, 1.4] as number[]).map((angle, i) => (
+        <mesh key={`mf-${i}`} rotation={[angle, i * 1.2, 0]}>
+          <torusGeometry args={[1.5 + i * 0.3, 0.04, 8, 72]} />
+          <AtomMaterial id="magnetosphere" activeFeature={activeFeature} viewMode={viewMode} color="#0288d1" opacity={0.14 + i * 0.05} roughness={0.4} metalness={0.2} />
+        </mesh>
+      ))}
+      {/* Dense neutron core */}
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[0.6, 36, 36]} />
+        <AtomMaterial id="neutronCore" activeFeature={activeFeature} viewMode={viewMode} color="#e0f7fa" roughness={0.55} metalness={0.35} />
+      </mesh>
+      {/* Pulse beams — animated scale via beamRef */}
+      <group ref={beamRef}>
+        <mesh position={[0, 2.15, 0]} castShadow>
+          <coneGeometry args={[0.18, 3.5, 16]} />
+          <AtomMaterial id="pulseBeam" activeFeature={activeFeature} viewMode={viewMode} color="#80deea" opacity={crossSection ? 0.24 : 0.48} roughness={0.3} metalness={0.1} />
+        </mesh>
+        <mesh position={[0, -2.15, 0]} rotation={[Math.PI, 0, 0]} castShadow>
+          <coneGeometry args={[0.18, 3.5, 16]} />
+          <AtomMaterial id="pulseBeam" activeFeature={activeFeature} viewMode={viewMode} color="#80deea" opacity={crossSection ? 0.24 : 0.48} roughness={0.3} metalness={0.1} />
+        </mesh>
+      </group>
     </group>
   );
 }
 
-// O=C=O — linear, two C=O double bonds shown as paired tubes
-function CO2Model({ activeComponent, viewMode, crossSection }: CommonModelProps) {
+// Black Hole — dark sphere + photon sphere torus + rotating accretion disk + jets + lensing ring
+function BlackHoleModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+  const diskRef = useRef<Group>(null);
+
+  useFrame((_, delta) => {
+    if (diskRef.current) {
+      diskRef.current.rotation.y += delta * 0.3;
+    }
+  });
+
   return (
-    <group rotation={[0.1, -0.22, 0.06]} scale={[1.08, 1.08, 1.08]}>
-      {/* Linear geometry indicator */}
-      <Bond id="linear" from={[-2.6, 0, 0]} to={[2.6, 0, 0]} radius={0.022} color="#44aaaa" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* Left oxygen */}
-      <Atom id="doubleBond" position={[-1.98, 0, 0]} radius={0.5} color="#cc3322" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* Right oxygen */}
-      <Atom id="doubleBond" position={[1.98, 0, 0]} radius={0.5} color="#cc3322" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* Central carbon */}
-      <Atom id="carbon" position={[0, 0, 0]} radius={0.42} color="#444444" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* Left C=O — two parallel bond tubes (σ + π) */}
-      <Bond id="doubleBond" from={[0, 0.11, 0]} to={[-1.98, 0.11, 0]} radius={0.052} color="#dd5533" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Bond id="doubleBond" from={[0, -0.11, 0]} to={[-1.98, -0.11, 0]} radius={0.052} color="#dd5533" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      {/* Right C=O — two parallel bond tubes */}
-      <Bond id="doubleBond" from={[0, 0.11, 0]} to={[1.98, 0.11, 0]} radius={0.052} color="#dd5533" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
-      <Bond id="doubleBond" from={[0, -0.11, 0]} to={[1.98, -0.11, 0]} radius={0.052} color="#dd5533" activeComponent={activeComponent} viewMode={viewMode} crossSection={crossSection} />
+    <group>
+      {/* Outer gravitational lensing ring */}
+      <mesh>
+        <torusGeometry args={[3.5, 0.022, 8, 120]} />
+        <AtomMaterial id="photonSphere" activeFeature={activeFeature} viewMode={viewMode} color="#eceff1" opacity={0.22} roughness={0.5} metalness={0.3} />
+      </mesh>
+      {/* Photon sphere */}
+      <mesh>
+        <torusGeometry args={[1.28, 0.04, 8, 80]} />
+        <AtomMaterial id="photonSphere" activeFeature={activeFeature} viewMode={viewMode} color="#607d8b" opacity={0.58} roughness={0.4} metalness={0.3} />
+      </mesh>
+      {/* Rotating accretion disk */}
+      <group ref={diskRef} rotation={[0.17, 0, 0]}>
+        <mesh>
+          <torusGeometry args={[2.4, 0.38, 16, 80]} />
+          <AtomMaterial id="accretionDisk" activeFeature={activeFeature} viewMode={viewMode} color="#b0bec5" opacity={crossSection ? 0.5 : 0.82} roughness={0.5} metalness={0.4} />
+        </mesh>
+        {/* Inner hot zone */}
+        <mesh>
+          <torusGeometry args={[1.6, 0.18, 16, 80]} />
+          <AtomMaterial id="accretionDisk" activeFeature={activeFeature} viewMode={viewMode} color="#ff8f00" opacity={crossSection ? 0.5 : 0.88} roughness={0.3} metalness={0.5} />
+        </mesh>
+      </group>
+      {/* Relativistic jets */}
+      <mesh position={[0, 2.8, 0]} castShadow>
+        <cylinderGeometry args={[0.06, 0.06, 4.5, 10]} />
+        <AtomMaterial id="jet" activeFeature={activeFeature} viewMode={viewMode} color="#cfd8dc" opacity={crossSection ? 0.3 : 0.52} roughness={0.3} metalness={0.2} />
+      </mesh>
+      <mesh position={[0, -2.8, 0]} castShadow>
+        <cylinderGeometry args={[0.06, 0.06, 4.5, 10]} />
+        <AtomMaterial id="jet" activeFeature={activeFeature} viewMode={viewMode} color="#cfd8dc" opacity={crossSection ? 0.3 : 0.52} roughness={0.3} metalness={0.2} />
+      </mesh>
+      {/* Event horizon — near-black sphere */}
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[0.85, 36, 36]} />
+        <AtomMaterial id="eventHorizon" activeFeature={activeFeature} viewMode={viewMode} color="#1a1a2e" roughness={0.05} metalness={0.9} />
+      </mesh>
+    </group>
+  );
+}
+
+// Exoplanet — planet with atmospheric layers + orbit ring + host star
+function ExoplanetModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+  return (
+    <group>
+      {/* Host star (distant, smaller sphere) */}
+      <group position={[-4.2, 0, 0]}>
+        <mesh castShadow>
+          <sphereGeometry args={[0.95, 32, 32]} />
+          <AtomMaterial id="hostStar" activeFeature={activeFeature} viewMode={viewMode} color="#ffe082" opacity={0.9} roughness={0.4} metalness={0.0} />
+        </mesh>
+        <mesh>
+          <sphereGeometry args={[1.35, 16, 16]} />
+          <AtomMaterial id="hostStar" activeFeature={activeFeature} viewMode={viewMode} color="#ffb300" opacity={0.1} />
+        </mesh>
+      </group>
+      {/* Orbit ring */}
+      <mesh rotation={[Math.PI / 2, 0.08, 0]}>
+        <torusGeometry args={[3.2, 0.026, 8, 100]} />
+        <AtomMaterial id="orbitRing" activeFeature={activeFeature} viewMode={viewMode} color="#2e7d32" opacity={0.38} roughness={0.6} metalness={0.1} />
+      </mesh>
+      {/* Atmosphere — three nested translucent shells */}
+      <mesh>
+        <sphereGeometry args={[1.1, 32, 32]} />
+        <AtomMaterial id="atmosphere" activeFeature={activeFeature} viewMode={viewMode} color="#ffe082" opacity={crossSection ? 0.04 : 0.07} />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[1.02, 32, 32]} />
+        <AtomMaterial id="atmosphere" activeFeature={activeFeature} viewMode={viewMode} color="#aed581" opacity={crossSection ? 0.1 : 0.14} />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[0.95, 32, 32]} />
+        <AtomMaterial id="atmosphere" activeFeature={activeFeature} viewMode={viewMode} color="#4fc3f7" opacity={crossSection ? 0.16 : 0.22} />
+      </mesh>
+      {/* Planet body */}
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[0.88, 36, 36]} />
+        <AtomMaterial id="atmosphere" activeFeature={activeFeature} viewMode={viewMode} color="#43a047" roughness={0.65} metalness={0.05} />
+      </mesh>
+    </group>
+  );
+}
+
+// Spiral Galaxy — bulge + disk + 4 logarithmic spiral arms + dark matter halo
+function GalaxyModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+  const spiralGeometries = useMemo(() => {
+    return [0, 1, 2, 3].map((armIndex) => {
+      const points: Vector3[] = [];
+      for (let i = 0; i <= 22; i++) {
+        const theta = 0.4 + (i / 22) * 3.8;
+        const r = 1.1 * Math.exp(0.28 * theta);
+        const x = r * Math.cos(theta + armIndex * Math.PI * 0.5);
+        const z = r * Math.sin(theta + armIndex * Math.PI * 0.5);
+        const y = (i % 3 - 1) * 0.04;
+        points.push(new Vector3(x, y, z));
+      }
+      return new TubeGeometry(new CatmullRomCurve3(points), 40, 0.1, 8, false);
+    });
+  }, []);
+
+  return (
+    <group rotation={[0.22, 0, 0]} scale={[0.72, 0.72, 0.72]}>
+      {/* Dark matter halo — vast transparent sphere */}
+      <mesh>
+        <sphereGeometry args={[5.8, 16, 16]} />
+        <AtomMaterial id="darkMatterHalo" activeFeature={activeFeature} viewMode={viewMode} color="#4a148c" opacity={0.03} />
+      </mesh>
+      {/* Stellar disk torus */}
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[2.8, 0.22, 8, 80]} />
+        <AtomMaterial id="diskStars" activeFeature={activeFeature} viewMode={viewMode} color="#ce93d8" opacity={crossSection ? 0.4 : 0.62} roughness={0.6} metalness={0.1} />
+      </mesh>
+      {/* Spiral arms */}
+      {spiralGeometries.map((geo, i) => (
+        <mesh key={`arm-${i}`} geometry={geo} castShadow>
+          <AtomMaterial id="spiralArms" activeFeature={activeFeature} viewMode={viewMode} color="#e3f2fd" opacity={crossSection ? 0.5 : 0.72} roughness={0.4} metalness={0.15} />
+        </mesh>
+      ))}
+      {/* Central bulge */}
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[0.7, 32, 32]} />
+        <AtomMaterial id="centralBulge" activeFeature={activeFeature} viewMode={viewMode} color="#fff8e1" roughness={0.48} metalness={0.08} />
+      </mesh>
     </group>
   );
 }
 
 // ── Model router ─────────────────────────────────────────────────────────────
 
-function MoleculeModel({
-  molecule,
-  activeComponent,
+function CosmicModel({
+  object,
+  activeFeature,
   viewMode,
   crossSection,
   autoRotate,
-}: Omit<MoleculeSceneProps, "resetKey">) {
+}: Omit<CosmicSceneProps, "resetKey">) {
   const group = useRef<Group>(null);
 
   useFrame((_, delta) => {
@@ -500,28 +430,20 @@ function MoleculeModel({
     }
   });
 
-  const common = { activeComponent, viewMode, crossSection };
+  const common: CommonModelProps = { activeFeature, viewMode, crossSection };
 
   return (
     <group ref={group} position={[0, 0, 0]}>
-      {molecule.modelAsset ? (
-        <AssetMoleculeModel molecule={molecule} asset={molecule.modelAsset} {...common} />
-      ) : (
-        <>
-          {molecule.modelKind === "water" && <WaterModel {...common} />}
-          {molecule.modelKind === "methane" && <MethaneModel {...common} />}
-          {molecule.modelKind === "glucose" && <GlucoseModel {...common} />}
-          {molecule.modelKind === "ammonia" && <AmmoniaModel {...common} />}
-          {molecule.modelKind === "benzene" && <BenzeneModel {...common} />}
-          {molecule.modelKind === "ethanol" && <EthanolModel {...common} />}
-          {molecule.modelKind === "co2" && <CO2Model {...common} />}
-        </>
-      )}
+      {object.modelKind === "mainStar" && <MainStarModel {...common} />}
+      {object.modelKind === "neutronStar" && <NeutronStarModel {...common} />}
+      {object.modelKind === "blackHole" && <BlackHoleModel {...common} />}
+      {object.modelKind === "exoplanet" && <ExoplanetModel {...common} />}
+      {object.modelKind === "galaxy" && <GalaxyModel {...common} />}
     </group>
   );
 }
 
-function ModelLoadingOverlay({ molecule }: { molecule: MoleculeItem }) {
+function ModelLoadingOverlay({ object }: { object: CosmicObject }) {
   const { progress } = useProgress();
   const displayProgress = Math.max(8, Math.min(100, Math.round(progress)));
 
@@ -529,7 +451,7 @@ function ModelLoadingOverlay({ molecule }: { molecule: MoleculeItem }) {
     <Html center className="model-loader">
       <div>
         <span>Loading 3D model</span>
-        <strong>{molecule.name}</strong>
+        <strong>{object.name}</strong>
         <i>
           <b style={{ width: `${displayProgress}%` }} />
         </i>
@@ -539,63 +461,56 @@ function ModelLoadingOverlay({ molecule }: { molecule: MoleculeItem }) {
   );
 }
 
-export function MoleculeScene({
-  molecule,
-  activeComponent,
+export function CosmicScene({
+  object,
+  activeFeature,
   viewMode,
   crossSection,
   autoRotate,
   resetKey,
-}: MoleculeSceneProps) {
-  const nativeMaterial = molecule.modelAsset?.materialMode === "native";
-
+}: CosmicSceneProps) {
   return (
     <Canvas
       key={resetKey}
-      className={`cell-canvas${nativeMaterial ? " is-native-asset" : ""}`}
+      className="cell-canvas"
       dpr={[1, 2]}
       shadows
       gl={{ antialias: true, alpha: true, premultipliedAlpha: false }}
       camera={{ position: [0, 0.2, 5.8], fov: 38 }}
     >
-      {!nativeMaterial && <color attach="background" args={["#fbf7ee"]} />}
-      <ambientLight intensity={nativeMaterial ? 1.42 : 1.32} />
-      <hemisphereLight
-        args={[
-          nativeMaterial ? "#fffaf0" : "#fff8ea",
-          nativeMaterial ? "#efe3d2" : "#e3ded2",
-          nativeMaterial ? 1.26 : 1.22,
-        ]}
-      />
-      <directionalLight position={[4.2, 5.2, 5.8]} intensity={nativeMaterial ? 2.72 : 2.6} castShadow />
-      {nativeMaterial && <directionalLight position={[-4.4, 2.2, 3.6]} intensity={0.82} color="#fff1df" />}
+      <color attach="background" args={["#080c14"]} />
+      <ambientLight intensity={0.28} />
+      <hemisphereLight args={["#0d1b3e", "#000010", 0.38]} />
+      <directionalLight position={[4.2, 5.2, 5.8]} intensity={1.6} color="#c0d8ff" castShadow />
       <spotLight
         position={[-3.6, 3.2, 4.6]}
         angle={0.42}
         penumbra={0.74}
-        intensity={nativeMaterial ? 0.78 : 1.38}
-        color={nativeMaterial ? "#fff8ec" : molecule.accentSoft}
+        intensity={0.6}
+        color={object.accentSoft}
       />
       <pointLight
         position={[2.8, -1.2, 3.2]}
-        intensity={nativeMaterial ? 0.46 : 0.58}
-        color={nativeMaterial ? "#ffffff" : molecule.accent}
+        intensity={0.8}
+        color={object.accent}
       />
-      <Suspense fallback={<ModelLoadingOverlay molecule={molecule} />}>
+      <Suspense fallback={<ModelLoadingOverlay object={object} />}>
         <Float speed={1.25} rotationIntensity={0.08} floatIntensity={0.18}>
-          <MoleculeModel
-            molecule={molecule}
-            activeComponent={activeComponent}
-            viewMode={viewMode}
-            crossSection={crossSection}
-            autoRotate={autoRotate}
-          />
+          <Center>
+            <CosmicModel
+              object={object}
+              activeFeature={activeFeature}
+              viewMode={viewMode}
+              crossSection={crossSection}
+              autoRotate={autoRotate}
+            />
+          </Center>
         </Float>
         <ContactShadows
           position={[0, -1.8, 0]}
-          opacity={nativeMaterial ? 0.18 : 0.24}
-          scale={nativeMaterial ? 7.8 : 7.0}
-          blur={nativeMaterial ? 3.2 : 2.4}
+          opacity={0.12}
+          scale={7.0}
+          blur={2.4}
           far={4.2}
         />
       </Suspense>

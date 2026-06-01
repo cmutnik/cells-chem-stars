@@ -2,7 +2,7 @@
 
 ### Container
 
-To build and run a docker container with this app port forwarded:
+To build and run a docker container with this app port forwarded run this from the [root of the repo](../) (one directory back `cd ..`):
 
 ```bash
 docker build -t cosmic-explorer -f deploy/Dockerfile .

@@ -6,7 +6,7 @@ import {
   Camera,
   ChevronDown,
   CircleDot,
-  FlaskConical,
+  Telescope,
   Gauge,
   EyeOff,
   Grid3X3,
@@ -23,8 +23,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { MoleculeScene } from "./components/CellScene";
-import { molecules, getMoleculeById, type MoleculeItem, type ViewMode } from "./data/molecules";
+import { CosmicScene } from "./components/CellScene";
+import { cosmicObjects, getCosmicObjectById, type CosmicObject, type ViewMode } from "./data/cosmicObjects";
 
 type ModeOption = {
   id: ViewMode;
@@ -37,9 +37,9 @@ const modeOptions: ModeOption[] = [
   { id: "focus", label: "Focus", Icon: CircleDot },
 ];
 
-const initialMolecule = getMoleculeById("water");
+const initialObject = getCosmicObjectById("mainStar");
 
-function Header({ molecule }: { molecule: MoleculeItem }) {
+function Header({ object }: { object: CosmicObject }) {
   return (
     <header className="topbar">
       <div className="brand-block">
@@ -47,8 +47,8 @@ function Header({ molecule }: { molecule: MoleculeItem }) {
           <Sparkles size={26} />
         </div>
         <div>
-          <h1>Molecule Structure Studio</h1>
-          <p>Explore chemistry at the molecular level</p>
+          <h1>Astronomy Explorer</h1>
+          <p>Explore stars, black holes, and galaxies</p>
         </div>
       </div>
 
@@ -70,8 +70,8 @@ function Header({ molecule }: { molecule: MoleculeItem }) {
           <span>Settings</span>
         </a>
         <button className="avatar-button" type="button" aria-label="User menu">
-          <span className="avatar-core" style={{ background: molecule.accentSoft }}>
-            <span style={{ background: molecule.accent }} />
+          <span className="avatar-core" style={{ background: object.accentSoft }}>
+            <span style={{ background: object.accent }} />
           </span>
           <ChevronDown size={20} />
         </button>
@@ -81,33 +81,17 @@ function Header({ molecule }: { molecule: MoleculeItem }) {
 }
 
 type SidebarProps = {
-  selectedMolecule: MoleculeItem;
-  activeComponent: string;
+  selectedObject: CosmicObject;
+  activeFeature: string;
   favorites: Set<string>;
-  onSelectMolecule: (id: string) => void;
-  onSelectComponent: (id: string) => void;
+  onSelectObject: (id: string) => void;
+  onSelectFeature: (id: string) => void;
   onToggleFavorite: (id: string) => void;
 };
 
-function MiniMolecule({ molecule }: { molecule: MoleculeItem }) {
-  if (molecule.renderImage?.url) {
-    return (
-      <span className="mini-cell has-preview" style={{ "--thumb": molecule.accent } as CSSProperties}>
-        <img src={molecule.renderImage.url} alt="" aria-hidden="true" />
-      </span>
-    );
-  }
-
-  if (molecule.modelAsset?.previewUrl) {
-    return (
-      <span className="mini-cell has-preview" style={{ "--thumb": molecule.accent } as CSSProperties}>
-        <img src={molecule.modelAsset.previewUrl} alt="" aria-hidden="true" />
-      </span>
-    );
-  }
-
+function MiniObject({ object }: { object: CosmicObject }) {
   return (
-    <span className={`mini-cell mini-cell-${molecule.modelKind}`} style={{ "--thumb": molecule.accent } as CSSProperties}>
+    <span className={`mini-cell mini-cell-${object.modelKind}`} style={{ "--thumb": object.accent } as CSSProperties}>
       <span />
       <i />
       <b />
@@ -116,11 +100,11 @@ function MiniMolecule({ molecule }: { molecule: MoleculeItem }) {
 }
 
 function Sidebar({
-  selectedMolecule,
-  activeComponent,
+  selectedObject,
+  activeFeature,
   favorites,
-  onSelectMolecule,
-  onSelectComponent,
+  onSelectObject,
+  onSelectFeature,
   onToggleFavorite,
 }: SidebarProps) {
   return (
@@ -128,36 +112,36 @@ function Sidebar({
       <section className="panel cell-type-panel">
         <div className="panel-heading">
           <span>
-            <FlaskConical size={18} />
-            Molecules
+            <Telescope size={18} />
+            Objects
           </span>
           <ChevronDown size={18} />
         </div>
 
         <div className="cell-list">
-          {molecules.map((molecule) => {
-            const selected = selectedMolecule.id === molecule.id;
+          {cosmicObjects.map((object) => {
+            const selected = selectedObject.id === object.id;
             return (
               <button
                 className={`cell-row ${selected ? "is-active" : ""}`}
                 type="button"
-                key={molecule.id}
-                onClick={() => onSelectMolecule(molecule.id)}
+                key={object.id}
+                onClick={() => onSelectObject(object.id)}
               >
-                <MiniMolecule molecule={molecule} />
+                <MiniObject object={object} />
                 <span className="cell-row-copy">
-                  <strong>{molecule.name}</strong>
-                  <span>{molecule.type}</span>
+                  <strong>{object.name}</strong>
+                  <span>{object.type}</span>
                 </span>
                 <span
-                  className={`favorite-dot ${favorites.has(molecule.id) ? "is-on" : ""}`}
+                  className={`favorite-dot ${favorites.has(object.id) ? "is-on" : ""}`}
                   onClick={(event) => {
                     event.stopPropagation();
-                    onToggleFavorite(molecule.id);
+                    onToggleFavorite(object.id);
                   }}
                   role="button"
                   tabIndex={0}
-                  aria-label={`Favorite ${molecule.name}`}
+                  aria-label={`Favorite ${object.name}`}
                 >
                   <Star size={18} fill="currentColor" />
                 </span>
@@ -171,21 +155,21 @@ function Sidebar({
         <div className="panel-heading">
           <span>
             <Sparkles size={16} />
-            Components
+            Features
           </span>
           <ChevronDown size={18} />
         </div>
 
         <div className="organelle-list">
-          {selectedMolecule.components.map((component) => (
+          {selectedObject.features.map((feature) => (
             <button
-              className={`organelle-row ${activeComponent === component.id ? "is-active" : ""}`}
+              className={`organelle-row ${activeFeature === feature.id ? "is-active" : ""}`}
               type="button"
-              key={component.id}
-              onClick={() => onSelectComponent(component.id)}
+              key={feature.id}
+              onClick={() => onSelectFeature(feature.id)}
             >
-              <span className="color-dot" style={{ background: component.color }} />
-              <span>{component.name}</span>
+              <span className="color-dot" style={{ background: feature.color }} />
+              <span>{feature.name}</span>
             </button>
           ))}
         </div>
@@ -195,8 +179,8 @@ function Sidebar({
 }
 
 type StageProps = {
-  molecule: MoleculeItem;
-  activeComponent: string;
+  object: CosmicObject;
+  activeFeature: string;
   viewMode: ViewMode;
   crossSection: boolean;
   autoRotate: boolean;
@@ -209,8 +193,8 @@ type StageProps = {
 };
 
 function Stage({
-  molecule,
-  activeComponent,
+  object,
+  activeFeature,
   viewMode,
   crossSection,
   autoRotate,
@@ -226,8 +210,8 @@ function Stage({
       <section className="stage-panel">
         <div className="stage-title">
           <div>
-            <h2>{molecule.name}</h2>
-            <p>{molecule.type}</p>
+            <h2>{object.name}</h2>
+            <p>{object.type}</p>
           </div>
 
           <div className="view-card">
@@ -258,9 +242,9 @@ function Stage({
         </div>
 
         <div className="canvas-wrap">
-          <MoleculeScene
-            molecule={molecule}
-            activeComponent={activeComponent}
+          <CosmicScene
+            object={object}
+            activeFeature={activeFeature}
             viewMode={viewMode}
             crossSection={crossSection}
             autoRotate={autoRotate}
@@ -307,61 +291,61 @@ function Stage({
 }
 
 type RightPanelProps = {
-  molecule: MoleculeItem;
-  activeComponent: string;
+  object: CosmicObject;
+  activeFeature: string;
   favorites: Set<string>;
   mastery: number;
-  viewedMoleculeCount: number;
-  viewedComponentCount: number;
-  totalComponentCount: number;
+  viewedObjectCount: number;
+  viewedFeatureCount: number;
+  totalFeatureCount: number;
   tutorPrompt: string;
   onToggleFavorite: (id: string) => void;
   onTutorPrompt: (prompt: string) => void;
 };
 
-function buildTutorPrompts(molecule: MoleculeItem, component: MoleculeItem["components"][number]) {
+function buildTutorPrompts(object: CosmicObject, feature: CosmicObject["features"][number]) {
   return [
-    `Explain the role of ${component.name} in ${molecule.name} and why it matters.`,
-    `Quiz me on the structural differences between ${molecule.name} and ${getMoleculeById(molecule.comparison).name}.`,
-    `Guide me through identifying ${component.name} in the 3D model.`,
+    `Explain ${feature.name} in ${object.name} and its physical significance.`,
+    `Quiz me on the observational differences between ${object.name} and ${getCosmicObjectById(object.comparison).name}.`,
+    `Guide me through identifying ${feature.name} in the 3D visualization.`,
   ];
 }
 
 function RightPanel({
-  molecule,
-  activeComponent,
+  object,
+  activeFeature,
   favorites,
   mastery,
-  viewedMoleculeCount,
-  viewedComponentCount,
-  totalComponentCount,
+  viewedObjectCount,
+  viewedFeatureCount,
+  totalFeatureCount,
   tutorPrompt,
   onToggleFavorite,
   onTutorPrompt,
 }: RightPanelProps) {
-  const component = molecule.components.find((item) => item.id === activeComponent) ?? molecule.components[0];
-  const tutorPrompts = buildTutorPrompts(molecule, component);
+  const feature = object.features.find((item) => item.id === activeFeature) ?? object.features[0];
+  const tutorPrompts = buildTutorPrompts(object, feature);
 
   return (
     <aside className="right-rail">
       <section className="panel details-panel">
         <div className="panel-heading detail-heading">
-          <span>Component Details</span>
-          <button type="button" onClick={() => onToggleFavorite(molecule.id)} aria-label="Toggle favorite">
-            <Heart size={22} fill={favorites.has(molecule.id) ? "currentColor" : "none"} />
+          <span>Feature Details</span>
+          <button type="button" onClick={() => onToggleFavorite(object.id)} aria-label="Toggle favorite">
+            <Heart size={22} fill={favorites.has(object.id) ? "currentColor" : "none"} />
           </button>
         </div>
 
         <div className="detail-hero">
-          <span className="organelle-orb" style={{ background: component.color }} />
+          <span className="organelle-orb" style={{ background: feature.color }} />
           <div>
-            <h3>{component.name}</h3>
-            <p>{component.subtitle}</p>
+            <h3>{feature.name}</h3>
+            <p>{feature.subtitle}</p>
           </div>
         </div>
 
         <dl className="attribute-list">
-          {component.attributes.map((item) => (
+          {feature.attributes.map((item) => (
             <div key={item.label}>
               <dt>{item.label}</dt>
               <dd>{item.value}</dd>
@@ -371,7 +355,7 @@ function RightPanel({
             <dt>Highlight</dt>
             <dd>
               <span className="mini-toggle is-on" />
-              <span className="detail-dot" style={{ background: component.color }} />
+              <span className="detail-dot" style={{ background: feature.color }} />
             </dd>
           </div>
         </dl>
@@ -379,11 +363,11 @@ function RightPanel({
 
       <section className="panel notes-panel">
         <div className="panel-heading">
-          <span>Chemistry Notes</span>
+          <span>Astrophysical Notes</span>
         </div>
-        <p>{component.note}</p>
+        <p>{feature.note}</p>
         <div className="fun-fact">
-          <span>Fun Fact: {component.fact}</span>
+          <span>Fun Fact: {feature.fact}</span>
           <Sparkles size={18} />
         </div>
       </section>
@@ -406,7 +390,7 @@ function RightPanel({
             <b />
           </i>
           <small>
-            {viewedMoleculeCount}/{molecules.length} molecules explored · {viewedComponentCount}/{totalComponentCount} components inspected
+            {viewedObjectCount}/{cosmicObjects.length} objects explored · {viewedFeatureCount}/{totalFeatureCount} features inspected
           </small>
         </div>
 
@@ -416,8 +400,8 @@ function RightPanel({
             Current lesson focus
           </span>
           <p>
-            Identify <strong>{component.name}</strong>, describe its chemistry, then compare it with the equivalent feature in{" "}
-            {getMoleculeById(molecule.comparison).name}.
+            Identify <strong>{feature.name}</strong>, describe its physics, then compare it to the equivalent feature in{" "}
+            {getCosmicObjectById(object.comparison).name}.
           </p>
         </div>
 
@@ -442,38 +426,38 @@ function RightPanel({
         <div className="panel-heading">
           <span>Found In</span>
         </div>
-        <div className={`occurrence-art occurrence-${molecule.occurrence.motif}`}>
+        <div className={`occurrence-art occurrence-${object.occurrence.motif}`}>
           <span />
           <i />
           <b />
         </div>
-        <h4>{molecule.occurrence.title}</h4>
-        <p>{molecule.occurrence.body}</p>
+        <h4>{object.occurrence.title}</h4>
+        <p>{object.occurrence.body}</p>
       </section>
     </aside>
   );
 }
 
 type BottomPanelsProps = {
-  molecule: MoleculeItem;
+  object: CosmicObject;
   onCompare: () => void;
   onToast: (message: string) => void;
 };
 
-function BottomPanels({ molecule, onCompare, onToast }: BottomPanelsProps) {
-  const comparedMolecule = getMoleculeById(molecule.comparison);
+function BottomPanels({ object, onCompare, onToast }: BottomPanelsProps) {
+  const comparedObject = getCosmicObjectById(object.comparison);
 
   return (
     <section className="bottom-grid">
       <div className="panel microscope-panel">
         <div className="panel-heading">
           <span>
-            Spectroscopy
+            Observations
             <Info size={16} />
           </span>
         </div>
         <div className="micro-card-row">
-          {molecule.spectroscopy.map((image) => (
+          {object.observations.map((image) => (
             <button
               type="button"
               key={image.label}
@@ -485,9 +469,9 @@ function BottomPanels({ molecule, onCompare, onToast }: BottomPanelsProps) {
               <strong>{image.label}</strong>
             </button>
           ))}
-          <button type="button" className="micro-card add-card" onClick={() => onToast("Spectrum upload is a planned feature.")}>
+          <button type="button" className="micro-card add-card" onClick={() => onToast("Method upload is a planned feature.")}>
             <Plus size={28} />
-            <strong>Add Spectrum</strong>
+            <strong>Add Method</strong>
           </button>
         </div>
       </div>
@@ -495,25 +479,25 @@ function BottomPanels({ molecule, onCompare, onToast }: BottomPanelsProps) {
       <div className="panel compare-panel">
         <div className="panel-heading">
           <span>
-            Compare Molecules
+            Compare Objects
             <Info size={16} />
           </span>
         </div>
         <div className="compare-row">
           <div>
-            <MiniMolecule molecule={molecule} />
+            <MiniObject object={object} />
             <span>
-              <strong>{molecule.name}</strong>
+              <strong>{object.name}</strong>
               <em>You are here</em>
             </span>
           </div>
           <b>VS</b>
           <div>
             <span>
-              <strong>{comparedMolecule.name}</strong>
-              <em>{comparedMolecule.type}</em>
+              <strong>{comparedObject.name}</strong>
+              <em>{comparedObject.type}</em>
             </span>
-            <MiniMolecule molecule={comparedMolecule} />
+            <MiniObject object={comparedObject} />
           </div>
         </div>
         <button type="button" className="comparison-button" onClick={onCompare}>
@@ -526,23 +510,23 @@ function BottomPanels({ molecule, onCompare, onToast }: BottomPanelsProps) {
 }
 
 type ComparisonModalProps = {
-  molecule: MoleculeItem;
+  object: CosmicObject;
   open: boolean;
   onClose: () => void;
 };
 
-function ComparisonModal({ molecule, open, onClose }: ComparisonModalProps) {
-  const comparedMolecule = getMoleculeById(molecule.comparison);
+function ComparisonModal({ object, open, onClose }: ComparisonModalProps) {
+  const comparedObject = getCosmicObjectById(object.comparison);
   if (!open) {
     return null;
   }
 
-  const currentComponent = molecule.components.find((item) => item.id === molecule.defaultComponent) ?? molecule.components[0];
-  const comparedComponent =
-    comparedMolecule.components.find((item) => item.id === comparedMolecule.defaultComponent) ?? comparedMolecule.components[0];
+  const currentFeature = object.features.find((item) => item.id === object.defaultFeature) ?? object.features[0];
+  const comparedFeature =
+    comparedObject.features.find((item) => item.id === comparedObject.defaultFeature) ?? comparedObject.features[0];
 
   return (
-    <div className="modal-layer" role="dialog" aria-modal="true" aria-label="Molecule comparison">
+    <div className="modal-layer" role="dialog" aria-modal="true" aria-label="Cosmic object comparison">
       <div className="comparison-modal">
         <button className="modal-close" type="button" onClick={onClose}>
           Close
@@ -550,25 +534,25 @@ function ComparisonModal({ molecule, open, onClose }: ComparisonModalProps) {
         <div className="comparison-modal-head">
           <h3>Comparison View</h3>
           <p>
-            {molecule.name} compared with {comparedMolecule.name}
+            {object.name} compared with {comparedObject.name}
           </p>
         </div>
         <div className="comparison-columns">
-          {[molecule, comparedMolecule].map((item) => {
-            const component = item.id === molecule.id ? currentComponent : comparedComponent;
+          {[object, comparedObject].map((item) => {
+            const feature = item.id === object.id ? currentFeature : comparedFeature;
             return (
               <section key={item.id}>
-                <MiniMolecule molecule={item} />
+                <MiniObject object={item} />
                 <h4>{item.name}</h4>
                 <p>{item.type}</p>
                 <dl>
                   <div>
                     <dt>Key feature</dt>
-                    <dd>{component.name}</dd>
+                    <dd>{feature.name}</dd>
                   </div>
                   <div>
                     <dt>Description</dt>
-                    <dd>{component.subtitle}</dd>
+                    <dd>{feature.subtitle}</dd>
                   </div>
                   <div>
                     <dt>Found in</dt>
@@ -592,52 +576,52 @@ function Toast({ message }: { message: string | null }) {
 }
 
 export default function App() {
-  const [selectedMoleculeId, setSelectedMoleculeId] = useState(initialMolecule.id);
-  const [activeComponent, setActiveComponent] = useState(initialMolecule.defaultComponent);
+  const [selectedObjectId, setSelectedObjectId] = useState(initialObject.id);
+  const [activeFeature, setActiveFeature] = useState(initialObject.defaultFeature);
   const [viewMode, setViewMode] = useState<ViewMode>("mesh");
   const [crossSection, setCrossSection] = useState(false);
   const [autoRotate, setAutoRotate] = useState(true);
   const [resetKey, setResetKey] = useState(0);
-  const [favorites, setFavorites] = useState<Set<string>>(() => new Set([initialMolecule.id]));
-  const [viewedMolecules, setViewedMolecules] = useState<Set<string>>(() => new Set([initialMolecule.id]));
-  const [viewedComponentKeys, setViewedComponentKeys] = useState<Set<string>>(
-    () => new Set([`${initialMolecule.id}:${initialMolecule.defaultComponent}`]),
+  const [favorites, setFavorites] = useState<Set<string>>(() => new Set([initialObject.id]));
+  const [viewedObjects, setViewedObjects] = useState<Set<string>>(() => new Set([initialObject.id]));
+  const [viewedFeatureKeys, setViewedFeatureKeys] = useState<Set<string>>(
+    () => new Set([`${initialObject.id}:${initialObject.defaultFeature}`]),
   );
   const [comparisonOpen, setComparisonOpen] = useState(false);
   const [tutorPrompt, setTutorPrompt] = useState(
-    `Guide me through identifying ${initialMolecule.components[0].name} in the 3D model.`,
+    `Guide me through identifying ${initialObject.features[0].name} in the 3D visualization.`,
   );
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
-  const selectedMolecule = useMemo(() => getMoleculeById(selectedMoleculeId), [selectedMoleculeId]);
-  const totalComponentCount = useMemo(
-    () => molecules.reduce((total, molecule) => total + molecule.components.length, 0),
+  const selectedObject = useMemo(() => getCosmicObjectById(selectedObjectId), [selectedObjectId]);
+  const totalFeatureCount = useMemo(
+    () => cosmicObjects.reduce((total, object) => total + object.features.length, 0),
     [],
   );
   const mastery = useMemo(() => {
-    const moleculeCoverage = viewedMolecules.size / molecules.length;
-    const componentCoverage = viewedComponentKeys.size / totalComponentCount;
-    return Math.round((moleculeCoverage * 0.42 + componentCoverage * 0.58) * 100);
-  }, [totalComponentCount, viewedMolecules, viewedComponentKeys]);
+    const objectCoverage = viewedObjects.size / cosmicObjects.length;
+    const featureCoverage = viewedFeatureKeys.size / totalFeatureCount;
+    return Math.round((objectCoverage * 0.42 + featureCoverage * 0.58) * 100);
+  }, [totalFeatureCount, viewedObjects, viewedFeatureKeys]);
 
   useEffect(() => {
-    setActiveComponent(selectedMolecule.defaultComponent);
+    setActiveFeature(selectedObject.defaultFeature);
     setComparisonOpen(false);
-  }, [selectedMolecule]);
+  }, [selectedObject]);
 
   useEffect(() => {
-    setViewedMolecules((current) => {
+    setViewedObjects((current) => {
       const next = new Set(current);
-      next.add(selectedMolecule.id);
+      next.add(selectedObject.id);
       return next;
     });
-    setViewedComponentKeys((current) => {
+    setViewedFeatureKeys((current) => {
       const next = new Set(current);
-      next.add(`${selectedMolecule.id}:${activeComponent}`);
+      next.add(`${selectedObject.id}:${activeFeature}`);
       return next;
     });
-  }, [activeComponent, selectedMolecule.id]);
+  }, [activeFeature, selectedObject.id]);
 
   function showToast(message: string) {
     setToast(message);
@@ -660,29 +644,29 @@ export default function App() {
   }
 
   const shellStyle = {
-    "--accent": selectedMolecule.accent,
-    "--accent-soft": selectedMolecule.accentSoft,
-    "--cell-color": selectedMolecule.color,
+    "--accent": selectedObject.accent,
+    "--accent-soft": selectedObject.accentSoft,
+    "--cell-color": selectedObject.color,
   } as CSSProperties;
 
   return (
     <div className="app-shell" style={shellStyle}>
-      <Header molecule={selectedMolecule} />
+      <Header object={selectedObject} />
 
       <div className="app-grid">
         <Sidebar
-          selectedMolecule={selectedMolecule}
-          activeComponent={activeComponent}
+          selectedObject={selectedObject}
+          activeFeature={activeFeature}
           favorites={favorites}
-          onSelectMolecule={setSelectedMoleculeId}
-          onSelectComponent={setActiveComponent}
+          onSelectObject={setSelectedObjectId}
+          onSelectFeature={setActiveFeature}
           onToggleFavorite={toggleFavorite}
         />
 
         <div className="center-stack">
           <Stage
-            molecule={selectedMolecule}
-            activeComponent={activeComponent}
+            object={selectedObject}
+            activeFeature={activeFeature}
             viewMode={viewMode}
             crossSection={crossSection}
             autoRotate={autoRotate}
@@ -697,20 +681,20 @@ export default function App() {
             onToast={showToast}
           />
           <BottomPanels
-            molecule={selectedMolecule}
+            object={selectedObject}
             onCompare={() => setComparisonOpen(true)}
             onToast={showToast}
           />
         </div>
 
         <RightPanel
-          molecule={selectedMolecule}
-          activeComponent={activeComponent}
+          object={selectedObject}
+          activeFeature={activeFeature}
           favorites={favorites}
           mastery={mastery}
-          viewedMoleculeCount={viewedMolecules.size}
-          viewedComponentCount={viewedComponentKeys.size}
-          totalComponentCount={totalComponentCount}
+          viewedObjectCount={viewedObjects.size}
+          viewedFeatureCount={viewedFeatureKeys.size}
+          totalFeatureCount={totalFeatureCount}
           tutorPrompt={tutorPrompt}
           onToggleFavorite={toggleFavorite}
           onTutorPrompt={(prompt) => {
@@ -720,7 +704,7 @@ export default function App() {
         />
       </div>
 
-      <ComparisonModal molecule={selectedMolecule} open={comparisonOpen} onClose={() => setComparisonOpen(false)} />
+      <ComparisonModal object={selectedObject} open={comparisonOpen} onClose={() => setComparisonOpen(false)} />
       <Toast message={toast} />
     </div>
   );
