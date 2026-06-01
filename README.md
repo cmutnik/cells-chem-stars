@@ -1,3 +1,93 @@
+# Active Deployments
+
+All deployments are still works in progress. At this time, they are meant for quick demo purposes only.
+
+- [Bio Demo](https://ewbio.vercel.app/)
+- [Chem Demo](https://ewchem.vercel.app/)
+<!-- [![Star Demo](https://img.shields.io/badge/live-demo-16a34a)]() -->
+- [Astro Demo](https://ewastro.vercel.app/)
+
+## Chemistry Variant (This Branch)
+
+[![Live Demo](https://img.shields.io/badge/live-demo-16a34a)](https://ewchem.vercel.app/)
+
+Chemistry variant with molecules instead of cells. All made for EW ;)
+
+----
+## Deployment Steps
+
+### Chemistry Branch
+
+[![Chem Demo](https://img.shields.io/badge/live-demo-16a34a)](https://ewchem.vercel.app/)
+
+Deploy the chemistry branch to [https://ewchem.vercel.app/](https://ewchem.vercel.app/):
+```bash
+git checkout chemistry
+npm i -g vercel
+vercel
+```
+
+[Full prod link (chem).](https://ewchem-k9ulmpxuk-cmutsites-8435s-projects.vercel.app)
+
+### Bio Branch
+
+[![Bio Demo](https://img.shields.io/badge/live-demo-16a34a)](https://ewbio.vercel.app/)
+
+We want the bio deployment to be at [https://ewbio.vercel.app/](https://ewbio.vercel.app/) so we need to remove the gitignored `.vercel/` dir:
+
+```bash
+git checkout main
+rm -rf .vercel
+vercel
+```
+
+[Full prod link (bio).](https://ewbio-po8c1lcm6-cmutsites-8435s-projects.vercel.app)
+
+----
+### Astro Branch
+
+[![Astro Demo](https://img.shields.io/badge/live-demo-16a34a)](https://ewastro.vercel.app)
+
+The astro work was branched off `chemistry`, not `main`:
+```bash
+git checkout chemistry
+git checkout -b astro
+```
+
+We want the astro deployment to be at [https://ewastro.vercel.app](https://ewastro.vercel.app) so we:
+
+```bash
+git checkout astro
+rm -rf .vercel/      # gitignored dir
+npm i -g vercel
+vercel
+```
+
+[Full prod link (astro).](https://ewastro-q69bmo1hv-cmutsites-8435s-projects.vercel.app)
+
+----
+## Dev Work
+
+### Local
+
+The following are necessary steps for launching and viewing this on localhost. From the root of the repo:
+
+```bash
+npm install      # only needed once / after pulling
+npm run dev
+```
+
+Then open [http://localhost:5173](http://localhost:5173) in your browser.
+
+### Container
+
+```bash
+docker build -t cosmic-explorer -f deploy/Dockerfile .
+docker run -p 5174:5174 -p 5173:5173 cosmic-explorer
+```
+
+----
+
 # Cell Architecture Studio
 
 ![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react&logoColor=111)
