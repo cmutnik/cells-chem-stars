@@ -414,6 +414,7 @@ export const cosmicObjects: CosmicObject[] = [
       { label: "Photometric (eclipses)", tone: "#ffab91", pattern: "radio-telescope" },
       { label: "X-ray (mass transfer)", tone: "#bf360c", pattern: "xray-imaging" },
       { label: "Gravitational Waves", tone: "#ff8a65", pattern: "gravitational-wave" },
+      { label: "GW: Two-Body Orbit", tone: "#0288d1", pattern: "gravitational-wave-binary" },
     ],
     features: [
       {

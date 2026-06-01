@@ -300,6 +300,113 @@ function GravitationalWaveGrid() {
   );
 }
 
+// Two orbiting bodies each driving their own ripple in the spacetime grid.
+// Primary (orange, heavier) orbits at r1; secondary (pale, lighter) at r2.
+function GravitationalWaveBinary() {
+  const N = 30;
+  const extent = 4.8;
+  const W = N + 1;
+  const step = (extent * 2) / N;
+
+  // Orbital parameters — primary is 60 % of total mass so orbits closer to barycentre
+  const orbitSpeed = 1.1;
+  const separation = 2.4;
+  const orbitR1 = separation * 0.40;  // primary orbit radius
+  const orbitR2 = separation * 0.60;  // secondary orbit radius
+
+  const geometry = useMemo(() => {
+    const verts = new Float32Array(W * W * 3);
+    let vi = 0;
+    for (let i = 0; i <= N; i++) {
+      for (let j = 0; j <= N; j++) {
+        verts[vi++] = -extent + i * step;
+        verts[vi++] = 0;
+        verts[vi++] = -extent + j * step;
+      }
+    }
+    const idxs: number[] = [];
+    for (let i = 0; i <= N; i++) {
+      for (let j = 0; j < N; j++) {
+        idxs.push(i * W + j, i * W + j + 1);
+        idxs.push(j * W + i, (j + 1) * W + i);
+      }
+    }
+    const geo = new BufferGeometry();
+    geo.setAttribute("position", new BufferAttribute(verts, 3));
+    geo.setIndex(idxs);
+    return geo;
+  }, []);
+
+  const star1Ref = useRef<Mesh>(null);
+  const star2Ref = useRef<Mesh>(null);
+
+  useFrame(({ clock }) => {
+    const t = clock.elapsedTime;
+    const angle = t * orbitSpeed;
+
+    // Barycentre-centred orbital positions (in XZ plane)
+    const px1 =  orbitR1 * Math.cos(angle);
+    const pz1 =  orbitR1 * Math.sin(angle);
+    const px2 = -orbitR2 * Math.cos(angle);
+    const pz2 = -orbitR2 * Math.sin(angle);
+
+    star1Ref.current?.position.set(px1, 0, pz1);
+    star2Ref.current?.position.set(px2, 0, pz2);
+
+    // Grid: superpose two decaying ripples, one from each orbiting source
+    const pos = geometry.attributes.position as BufferAttribute;
+    for (let i = 0; i <= N; i++) {
+      for (let j = 0; j <= N; j++) {
+        const x = -extent + i * step;
+        const z = -extent + j * step;
+
+        const dr1 = Math.sqrt((x - px1) ** 2 + (z - pz1) ** 2);
+        const dr2 = Math.sqrt((x - px2) ** 2 + (z - pz2) ** 2);
+
+        const y1 = dr1 < 0.22 ? 0 : (0.34 / (1 + dr1 * 0.3)) * Math.sin(dr1 * 2.1 - t * 3.4);
+        const y2 = dr2 < 0.22 ? 0 : (0.26 / (1 + dr2 * 0.3)) * Math.sin(dr2 * 2.1 - t * 3.4);
+
+        pos.setY(i * W + j, y1 + y2);
+      }
+    }
+    pos.needsUpdate = true;
+  });
+
+  return (
+    <group>
+      {/* Spacetime sheets */}
+      <lineSegments geometry={geometry}>
+        <lineBasicMaterial color="#29b6f6" opacity={0.38} transparent />
+      </lineSegments>
+      <lineSegments geometry={geometry} rotation={[0, 0, Math.PI / 2]}>
+        <lineBasicMaterial color="#29b6f6" opacity={0.20} transparent />
+      </lineSegments>
+
+      {/* Individual orbit paths */}
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[orbitR1, 0.014, 8, 80]} />
+        <meshStandardMaterial color="#ff7043" transparent opacity={0.22} />
+      </mesh>
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[orbitR2, 0.012, 8, 80]} />
+        <meshStandardMaterial color="#ffccbc" transparent opacity={0.18} />
+      </mesh>
+
+      {/* Primary star — larger, orange */}
+      <mesh ref={star1Ref}>
+        <sphereGeometry args={[0.36, 24, 24]} />
+        <meshStandardMaterial color="#ff7043" emissive="#ff4010" emissiveIntensity={0.7} />
+      </mesh>
+
+      {/* Secondary star — smaller, pale */}
+      <mesh ref={star2Ref}>
+        <sphereGeometry args={[0.25, 20, 20]} />
+        <meshStandardMaterial color="#ffccbc" emissive="#ffaa80" emissiveIntensity={0.55} />
+      </mesh>
+    </group>
+  );
+}
+
 // Neutron Star — dense sphere + magnetosphere loops + pulsed beam cones
 // Observation modes: radio shows beams; x-ray shows hot surface; gw shows ripple rings
 function NeutronStarModel({ activeFeature, viewMode, crossSection, activeObservation = null }: CommonModelProps) {
@@ -546,6 +653,16 @@ function BinaryStarModel({ activeFeature, viewMode, crossSection, activeObservat
   }, []);
 
   const obs = activeObservation;
+
+  // Two-body orbital GW mode: replace static model entirely with animated version
+  if (obs === "gravitational-wave-binary") {
+    return (
+      <group scale={[0.84, 0.84, 0.84]}>
+        <GravitationalWaveBinary />
+      </group>
+    );
+  }
+
   const obsViewMode: ViewMode = obs ? "mesh" : viewMode;
   const starOp   = obs === "gravitational-wave" ? 0.18 : 1.0;
   const streamOp = obs === "gravitational-wave" ? 0.08 : crossSection ? 0.55 : 0.72;
@@ -553,7 +670,7 @@ function BinaryStarModel({ activeFeature, viewMode, crossSection, activeObservat
 
   return (
     <group scale={[0.84, 0.84, 0.84]}>
-      {/* Gravitational wave spacetime grid (gw observation only) */}
+      {/* Single-source GW spacetime grid */}
       {obs === "gravitational-wave" && <GravitationalWaveGrid />}
 
       {/* Shared orbit ring */}
