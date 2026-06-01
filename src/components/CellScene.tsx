@@ -533,7 +533,7 @@ function GalaxyModel({ activeFeature, viewMode, crossSection }: CommonModelProps
 }
 
 // Binary Star System — primary + secondary spheres, shared orbit ring, Roche lobe tori, accretion stream
-function BinaryStarModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+function BinaryStarModel({ activeFeature, viewMode, crossSection, activeObservation = null }: CommonModelProps) {
   const streamGeometry = useMemo(() => {
     const pts = [
       new Vector3(1.05, 0, 0),
@@ -545,27 +545,36 @@ function BinaryStarModel({ activeFeature, viewMode, crossSection }: CommonModelP
     return new TubeGeometry(new CatmullRomCurve3(pts), 32, 0.04, 8, false);
   }, []);
 
+  const obs = activeObservation;
+  const obsViewMode: ViewMode = obs ? "mesh" : viewMode;
+  const starOp   = obs === "gravitational-wave" ? 0.18 : 1.0;
+  const streamOp = obs === "gravitational-wave" ? 0.08 : crossSection ? 0.55 : 0.72;
+  const orbitOp  = obs === "gravitational-wave" ? 0.08 : 0.28;
+
   return (
     <group scale={[0.84, 0.84, 0.84]}>
+      {/* Gravitational wave spacetime grid (gw observation only) */}
+      {obs === "gravitational-wave" && <GravitationalWaveGrid />}
+
       {/* Shared orbit ring */}
       <mesh rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[2.4, 0.022, 8, 100]} />
-        <AtomMaterial id="rocheLobes" activeFeature={activeFeature} viewMode={viewMode} color="#ff8a65" opacity={0.28} roughness={0.6} metalness={0.1} />
+        <AtomMaterial id="rocheLobes" activeFeature={activeFeature} viewMode={obsViewMode} color="#ff8a65" opacity={orbitOp} roughness={0.6} metalness={0.1} />
       </mesh>
 
       {/* Primary star */}
       <group position={[1.3, 0, 0]}>
         <mesh>
           <sphereGeometry args={[1.5, 16, 16]} />
-          <AtomMaterial id="primaryStar" activeFeature={activeFeature} viewMode={viewMode} color="#ff7043" opacity={0.06} />
+          <AtomMaterial id="primaryStar" activeFeature={activeFeature} viewMode={obsViewMode} color="#ff7043" opacity={0.06 * starOp} />
         </mesh>
         <mesh castShadow receiveShadow>
           <sphereGeometry args={[1.05, 40, 40]} />
-          <AtomMaterial id="primaryStar" activeFeature={activeFeature} viewMode={viewMode} color="#ff7043" roughness={0.55} metalness={0.05} />
+          <AtomMaterial id="primaryStar" activeFeature={activeFeature} viewMode={obsViewMode} color="#ff7043" opacity={starOp} roughness={0.55} metalness={0.05} />
         </mesh>
         <mesh>
           <sphereGeometry args={[0.5, 24, 24]} />
-          <AtomMaterial id="primaryStar" activeFeature={activeFeature} viewMode={viewMode} color="#fff9c4" opacity={crossSection ? 0.85 : 0.35} roughness={0.3} metalness={0.05} />
+          <AtomMaterial id="primaryStar" activeFeature={activeFeature} viewMode={obsViewMode} color="#fff9c4" opacity={(crossSection ? 0.85 : 0.35) * starOp} roughness={0.3} metalness={0.05} />
         </mesh>
       </group>
 
@@ -573,31 +582,31 @@ function BinaryStarModel({ activeFeature, viewMode, crossSection }: CommonModelP
       <group position={[-1.6, 0, 0]}>
         <mesh>
           <sphereGeometry args={[1.15, 16, 16]} />
-          <AtomMaterial id="secondaryStar" activeFeature={activeFeature} viewMode={viewMode} color="#ffccbc" opacity={0.05} />
+          <AtomMaterial id="secondaryStar" activeFeature={activeFeature} viewMode={obsViewMode} color="#ffccbc" opacity={0.05 * starOp} />
         </mesh>
         <mesh castShadow receiveShadow>
           <sphereGeometry args={[0.78, 36, 36]} />
-          <AtomMaterial id="secondaryStar" activeFeature={activeFeature} viewMode={viewMode} color="#ffccbc" roughness={0.58} metalness={0.04} />
+          <AtomMaterial id="secondaryStar" activeFeature={activeFeature} viewMode={obsViewMode} color="#ffccbc" opacity={starOp} roughness={0.58} metalness={0.04} />
         </mesh>
         <mesh>
           <sphereGeometry args={[0.35, 24, 24]} />
-          <AtomMaterial id="secondaryStar" activeFeature={activeFeature} viewMode={viewMode} color="#fff9c4" opacity={crossSection ? 0.85 : 0.28} roughness={0.3} metalness={0.05} />
+          <AtomMaterial id="secondaryStar" activeFeature={activeFeature} viewMode={obsViewMode} color="#fff9c4" opacity={(crossSection ? 0.85 : 0.28) * starOp} roughness={0.3} metalness={0.05} />
         </mesh>
       </group>
 
       {/* Roche lobe outlines */}
       <mesh position={[1.3, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[1.12, 0.018, 8, 60]} />
-        <AtomMaterial id="rocheLobes" activeFeature={activeFeature} viewMode={viewMode} color="#ff8a65" opacity={0.22} roughness={0.5} metalness={0.1} />
+        <AtomMaterial id="rocheLobes" activeFeature={activeFeature} viewMode={obsViewMode} color="#ff8a65" opacity={0.22 * (obs === "gravitational-wave" ? 0.3 : 1)} roughness={0.5} metalness={0.1} />
       </mesh>
       <mesh position={[-1.6, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[0.85, 0.016, 8, 60]} />
-        <AtomMaterial id="rocheLobes" activeFeature={activeFeature} viewMode={viewMode} color="#ff8a65" opacity={0.18} roughness={0.5} metalness={0.1} />
+        <AtomMaterial id="rocheLobes" activeFeature={activeFeature} viewMode={obsViewMode} color="#ff8a65" opacity={0.18 * (obs === "gravitational-wave" ? 0.3 : 1)} roughness={0.5} metalness={0.1} />
       </mesh>
 
       {/* Accretion stream */}
       <mesh geometry={streamGeometry}>
-        <AtomMaterial id="accretionStream" activeFeature={activeFeature} viewMode={viewMode} color="#bf360c" opacity={crossSection ? 0.55 : 0.72} roughness={0.4} metalness={0.25} />
+        <AtomMaterial id="accretionStream" activeFeature={activeFeature} viewMode={obsViewMode} color="#bf360c" opacity={streamOp} roughness={0.4} metalness={0.25} />
       </mesh>
     </group>
   );

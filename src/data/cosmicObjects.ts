@@ -413,6 +413,7 @@ export const cosmicObjects: CosmicObject[] = [
       { label: "Spectroscopic (radial velocity)", tone: "#ff7043", pattern: "optical-photometry" },
       { label: "Photometric (eclipses)", tone: "#ffab91", pattern: "radio-telescope" },
       { label: "X-ray (mass transfer)", tone: "#bf360c", pattern: "xray-imaging" },
+      { label: "Gravitational Waves", tone: "#ff8a65", pattern: "gravitational-wave" },
     ],
     features: [
       {
