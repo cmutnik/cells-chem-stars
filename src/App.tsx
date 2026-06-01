@@ -37,7 +37,7 @@ const modeOptions: ModeOption[] = [
   { id: "focus", label: "Focus", Icon: CircleDot },
 ];
 
-const initialObject = getCosmicObjectById("mainStar");
+const initialObject = getCosmicObjectById("emWave");
 
 function Header({ object }: { object: CosmicObject }) {
   return (
@@ -47,8 +47,8 @@ function Header({ object }: { object: CosmicObject }) {
           <Sparkles size={26} />
         </div>
         <div>
-          <h1>Astronomy Explorer</h1>
-          <p>Explore stars, black holes, and galaxies</p>
+          <h1>Physics Explorer</h1>
+          <p>Explore fundamental forces and particles</p>
         </div>
       </div>
 

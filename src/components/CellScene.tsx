@@ -751,12 +751,8 @@ function CosmicModel({
 
   return (
     <group ref={group} position={[0, 0, 0]}>
-      {object.modelKind === "mainStar" && <MainStarModel {...common} />}
-      {object.modelKind === "neutronStar" && <NeutronStarModel {...common} />}
-      {object.modelKind === "blackHole" && <BlackHoleModel {...common} />}
-      {object.modelKind === "exoplanet" && <ExoplanetModel {...common} />}
-      {object.modelKind === "galaxy" && <GalaxyModel {...common} />}
-      {object.modelKind === "binaryStar" && <BinaryStarModel {...common} />}
+      {object.modelKind === "emWave" && <EMWaveModel {...common} />}
+      {object.modelKind === "proton" && <ProtonModel {...common} />}
     </group>
   );
 }
