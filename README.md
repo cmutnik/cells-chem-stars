@@ -6,8 +6,9 @@
 ![Three.js](https://img.shields.io/badge/Three.js-0.181-000000?logo=threedotjs&logoColor=fff)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-**Other Deployments:**
+**Deployments:**
 
+- [Phys Demo](https://ewphys.vercel.app/)
 - [Bio Demo](https://ewbio.vercel.app/)
 - [Chem Demo](https://ewchem.vercel.app/)
 - [Astro Demo](https://ewastro.vercel.app/)
