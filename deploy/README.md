@@ -27,8 +27,11 @@ To build and run a docker container with this app port forwarded run this from t
 
 ```bash
 docker build -t cosmic-explorer -f deploy/Dockerfile .
-docker run -p 5174:5174  cosmic-explorer
+docker run -p 5174:5174 cosmic-explorer
 ```
+
+**Note:** If using port `5173`, it needs to be `EXPOSE`d in the [Dockerfile](./Dockerfile) and passed into the docker run command with `-p 5173:5173`. Then it is viewable at [5173](http://localhost:5173), instead of [5174](http://localhost:5174).
+
 
 ### Local
 
