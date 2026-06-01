@@ -4,7 +4,13 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=fff)
 ![Vite](https://img.shields.io/badge/Vite-7.2-646CFF?logo=vite&logoColor=fff)
 ![Three.js](https://img.shields.io/badge/Three.js-0.181-000000?logo=threedotjs&logoColor=fff)
+[![Live Demo](https://img.shields.io/badge/live-demo-16a34a)](https://ewastro.vercel.app/)
 ![License](https://img.shields.io/badge/license-MIT-blue)
+
+**Other Deployments:**
+
+- [Bio Demo](https://ewbio.vercel.app/)
+- [Chem Demo](https://ewchem.vercel.app/)
 
 An interactive 3D astronomy explorer built with React, Vite, and Three.js. Browse five cosmic objects — Main-Sequence Star, Neutron Star, Black Hole, Exoplanet, and Spiral Galaxy — with selectable features, comparison mode, and an AI Tutor panel.
 
