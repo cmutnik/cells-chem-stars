@@ -185,6 +185,7 @@ type StageProps = {
   crossSection: boolean;
   autoRotate: boolean;
   resetKey: number;
+  activeObservation: string | null;
   onModeChange: (mode: ViewMode) => void;
   onCrossSectionChange: (value: boolean) => void;
   onAutoRotateChange: (value: boolean) => void;
@@ -199,6 +200,7 @@ function Stage({
   crossSection,
   autoRotate,
   resetKey,
+  activeObservation,
   onModeChange,
   onCrossSectionChange,
   onAutoRotateChange,
@@ -249,6 +251,7 @@ function Stage({
             crossSection={crossSection}
             autoRotate={autoRotate}
             resetKey={resetKey}
+            activeObservation={activeObservation}
           />
         </div>
 
@@ -440,11 +443,13 @@ function RightPanel({
 
 type BottomPanelsProps = {
   object: CosmicObject;
+  activeObservation: string | null;
+  onObservationChange: (pattern: string) => void;
   onCompare: () => void;
   onToast: (message: string) => void;
 };
 
-function BottomPanels({ object, onCompare, onToast }: BottomPanelsProps) {
+function BottomPanels({ object, activeObservation, onObservationChange, onCompare, onToast }: BottomPanelsProps) {
   const comparedObject = getCosmicObjectById(object.comparison);
 
   return (
@@ -461,9 +466,9 @@ function BottomPanels({ object, onCompare, onToast }: BottomPanelsProps) {
             <button
               type="button"
               key={image.label}
-              className={`micro-card pattern-${image.pattern}`}
+              className={`micro-card pattern-${image.pattern}${activeObservation === image.pattern ? " is-active" : ""}`}
               style={{ "--micro": image.tone } as CSSProperties}
-              onClick={() => onToast(`${image.label} selected.`)}
+              onClick={() => onObservationChange(image.pattern)}
             >
               <span />
               <strong>{image.label}</strong>
@@ -578,6 +583,7 @@ function Toast({ message }: { message: string | null }) {
 export default function App() {
   const [selectedObjectId, setSelectedObjectId] = useState(initialObject.id);
   const [activeFeature, setActiveFeature] = useState(initialObject.defaultFeature);
+  const [activeObservation, setActiveObservation] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("mesh");
   const [crossSection, setCrossSection] = useState(false);
   const [autoRotate, setAutoRotate] = useState(true);
@@ -607,6 +613,7 @@ export default function App() {
 
   useEffect(() => {
     setActiveFeature(selectedObject.defaultFeature);
+    setActiveObservation(null);
     setComparisonOpen(false);
   }, [selectedObject]);
 
@@ -671,6 +678,7 @@ export default function App() {
             crossSection={crossSection}
             autoRotate={autoRotate}
             resetKey={resetKey}
+            activeObservation={activeObservation}
             onModeChange={setViewMode}
             onCrossSectionChange={setCrossSection}
             onAutoRotateChange={setAutoRotate}
@@ -682,6 +690,10 @@ export default function App() {
           />
           <BottomPanels
             object={selectedObject}
+            activeObservation={activeObservation}
+            onObservationChange={(pattern) =>
+              setActiveObservation(pattern === activeObservation ? null : pattern)
+            }
             onCompare={() => setComparisonOpen(true)}
             onToast={showToast}
           />

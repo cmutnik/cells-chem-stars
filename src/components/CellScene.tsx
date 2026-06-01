@@ -4,6 +4,8 @@ import { Suspense, useMemo, useRef } from "react";
 import {
   CatmullRomCurve3,
   Group,
+  Mesh,
+  MeshStandardMaterial,
   TubeGeometry,
   Vector3,
   type MeshStandardMaterialParameters,
@@ -17,6 +19,7 @@ type CosmicSceneProps = {
   crossSection: boolean;
   autoRotate: boolean;
   resetKey: number;
+  activeObservation: string | null;
 };
 
 type MaterialProps = {
@@ -57,6 +60,7 @@ type CommonModelProps = {
   activeFeature: string;
   viewMode: ViewMode;
   crossSection: boolean;
+  activeObservation?: string | null;
 };
 
 type AtomProps = CommonModelProps & {
@@ -230,45 +234,120 @@ function MainStarModel({ activeFeature, viewMode, crossSection }: CommonModelPro
   );
 }
 
-// Neutron Star — dense sphere + pulsed beam cones + magnetosphere field loops
-function NeutronStarModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+// Gravitational wave rings — three phase-offset expanding tori
+function GravitationalWaveRings() {
+  const ringRefs = useRef<(Mesh | null)[]>([null, null, null]);
+
+  useFrame(({ clock }) => {
+    ringRefs.current.forEach((mesh, i) => {
+      if (!mesh) return;
+      const phase = ((clock.elapsedTime * 0.45 + i * 0.333) % 1);
+      const s = 1 + phase * 5;
+      mesh.scale.set(s, s, s);
+      (mesh.material as MeshStandardMaterial).opacity = (1 - phase) * 0.52;
+    });
+  });
+
+  return (
+    <group rotation={[Math.PI / 2, 0, 0]}>
+      {([0, 1, 2] as const).map((i) => (
+        <mesh key={i} ref={(el) => { ringRefs.current[i] = el; }}>
+          <torusGeometry args={[1.2, 0.032, 8, 80]} />
+          <meshStandardMaterial color="#4fc3f7" transparent opacity={0.4} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+// Neutron Star — dense sphere + magnetosphere loops + pulsed beam cones
+// Observation modes: radio shows beams; x-ray shows hot surface; gw shows ripple rings
+function NeutronStarModel({ activeFeature, viewMode, crossSection, activeObservation = null }: CommonModelProps) {
+  const obs = activeObservation;
+  // When an observation is active, disable focus-mode dimming so obs colours dominate
+  const obsViewMode: ViewMode = obs ? "mesh" : viewMode;
+
+  // Per-observation opacity overrides
+  const glowOp   = obs === "radio-telescope" || obs === "gravitational-wave" ? 0.03 : 0.12;
+  const ringOp   = (i: number) => {
+    if (obs === "radio-telescope")   return 0.04;
+    if (obs === "xray-imaging")      return 0.42 + i * 0.08;
+    if (obs === "gravitational-wave") return 0.04;
+    return 0.22 + i * 0.07;
+  };
+  const coreOp   = obs === "radio-telescope" ? 0.15 : 1.0;
+  const coreColor = obs === "xray-imaging" ? "#ffffff" : "#e0f7fa";
+  const beamOp   = obs === "xray-imaging" ? 0.22
+    : obs === "gravitational-wave"   ? 0.05
+    : obs === "radio-telescope"      ? 0.92
+    : crossSection                   ? 0.24 : 0.48;
+  const beamColor = obs === "radio-telescope" ? "#e0f7fa" : "#80deea";
+
   const beamRef = useRef<Group>(null);
 
   useFrame(({ clock }) => {
     if (beamRef.current) {
-      const scale = 0.9 + 0.1 * Math.sin(clock.elapsedTime * 2.8);
+      // Faster, more dramatic pulse in radio mode
+      const freq = obs === "radio-telescope" ? 6.0 : 2.8;
+      const amp  = obs === "radio-telescope" ? 0.18 : 0.1;
+      const scale = (1 - amp) + amp * Math.abs(Math.sin(clock.elapsedTime * freq));
       beamRef.current.scale.set(1, scale, 1);
     }
   });
 
   return (
     <group>
+      {/* Gravitational wave rings (gw observation only) */}
+      {obs === "gravitational-wave" && <GravitationalWaveRings />}
+
       {/* Soft glow shell */}
       <mesh>
         <sphereGeometry args={[1.1, 24, 24]} />
-        <AtomMaterial id="neutronCore" activeFeature={activeFeature} viewMode={viewMode} color="#b3e5fc" opacity={0.12} />
+        <AtomMaterial id="neutronCore" activeFeature={activeFeature} viewMode={obsViewMode} color="#b3e5fc" opacity={glowOp} />
       </mesh>
-      {/* Magnetosphere field-line loops */}
+
+      {/* Magnetosphere field-line loops — thicker and more distinct per ring */}
       {([0, 0.7, 1.4] as number[]).map((angle, i) => (
         <mesh key={`mf-${i}`} rotation={[angle, i * 1.2, 0]}>
-          <torusGeometry args={[1.5 + i * 0.3, 0.04, 8, 72]} />
-          <AtomMaterial id="magnetosphere" activeFeature={activeFeature} viewMode={viewMode} color="#0288d1" opacity={0.14 + i * 0.05} roughness={0.4} metalness={0.2} />
+          <torusGeometry args={[1.5 + i * 0.3, 0.065, 8, 72]} />
+          <AtomMaterial id="magnetosphere" activeFeature={activeFeature} viewMode={obsViewMode} color="#0288d1" opacity={ringOp(i)} roughness={0.4} metalness={0.2} />
         </mesh>
       ))}
+
       {/* Dense neutron core */}
       <mesh castShadow receiveShadow>
         <sphereGeometry args={[0.6, 36, 36]} />
-        <AtomMaterial id="neutronCore" activeFeature={activeFeature} viewMode={viewMode} color="#e0f7fa" roughness={0.55} metalness={0.35} />
+        <AtomMaterial id="neutronCore" activeFeature={activeFeature} viewMode={obsViewMode} color={coreColor} opacity={coreOp} roughness={0.55} metalness={0.35} />
       </mesh>
-      {/* Pulse beams — animated scale via beamRef */}
+
+      {/* X-ray polar hot spots at magnetic poles */}
+      {obs === "xray-imaging" && (
+        <>
+          <mesh position={[0, 0.63, 0]}>
+            <sphereGeometry args={[0.13, 16, 16]} />
+            <meshStandardMaterial color="#ffffff" emissive="#88ddff" emissiveIntensity={2.4} transparent />
+          </mesh>
+          <mesh position={[0, -0.63, 0]}>
+            <sphereGeometry args={[0.13, 16, 16]} />
+            <meshStandardMaterial color="#ffffff" emissive="#88ddff" emissiveIntensity={2.4} transparent />
+          </mesh>
+        </>
+      )}
+
+      {/* Pulse beams — central shaft + twin cones, animated */}
       <group ref={beamRef}>
-        <mesh position={[0, 2.15, 0]} castShadow>
-          <coneGeometry args={[0.18, 3.5, 16]} />
-          <AtomMaterial id="pulseBeam" activeFeature={activeFeature} viewMode={viewMode} color="#80deea" opacity={crossSection ? 0.24 : 0.48} roughness={0.3} metalness={0.1} />
+        {/* Thin axial beam shaft */}
+        <mesh>
+          <cylinderGeometry args={[0.038, 0.038, 7.2, 8]} />
+          <AtomMaterial id="pulseBeam" activeFeature={activeFeature} viewMode={obsViewMode} color={beamColor} opacity={beamOp * 0.45} roughness={0.3} metalness={0.1} />
         </mesh>
-        <mesh position={[0, -2.15, 0]} rotation={[Math.PI, 0, 0]} castShadow>
-          <coneGeometry args={[0.18, 3.5, 16]} />
-          <AtomMaterial id="pulseBeam" activeFeature={activeFeature} viewMode={viewMode} color="#80deea" opacity={crossSection ? 0.24 : 0.48} roughness={0.3} metalness={0.1} />
+        <mesh position={[0, 2.2, 0]} castShadow>
+          <coneGeometry args={[0.24, 3.8, 16]} />
+          <AtomMaterial id="pulseBeam" activeFeature={activeFeature} viewMode={obsViewMode} color={beamColor} opacity={beamOp} roughness={0.3} metalness={0.1} />
+        </mesh>
+        <mesh position={[0, -2.2, 0]} rotation={[Math.PI, 0, 0]} castShadow>
+          <coneGeometry args={[0.24, 3.8, 16]} />
+          <AtomMaterial id="pulseBeam" activeFeature={activeFeature} viewMode={obsViewMode} color={beamColor} opacity={beamOp} roughness={0.3} metalness={0.1} />
         </mesh>
       </group>
     </group>
@@ -421,6 +500,7 @@ function CosmicModel({
   viewMode,
   crossSection,
   autoRotate,
+  activeObservation,
 }: Omit<CosmicSceneProps, "resetKey">) {
   const group = useRef<Group>(null);
 
@@ -430,7 +510,7 @@ function CosmicModel({
     }
   });
 
-  const common: CommonModelProps = { activeFeature, viewMode, crossSection };
+  const common: CommonModelProps = { activeFeature, viewMode, crossSection, activeObservation };
 
   return (
     <group ref={group} position={[0, 0, 0]}>
@@ -468,6 +548,7 @@ export function CosmicScene({
   crossSection,
   autoRotate,
   resetKey,
+  activeObservation,
 }: CosmicSceneProps) {
   return (
     <Canvas
@@ -503,6 +584,7 @@ export function CosmicScene({
               viewMode={viewMode}
               crossSection={crossSection}
               autoRotate={autoRotate}
+              activeObservation={activeObservation}
             />
           </Center>
         </Float>
