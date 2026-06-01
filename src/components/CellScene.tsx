@@ -1,33 +1,32 @@
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Center, ContactShadows, Float, Html, OrbitControls, RoundedBox, useGLTF, useProgress } from "@react-three/drei";
+import { Center, ContactShadows, Float, Html, OrbitControls, useProgress } from "@react-three/drei";
 import { Suspense, useMemo, useRef } from "react";
 import {
-  Color,
+  BufferAttribute,
+  BufferGeometry,
   CatmullRomCurve3,
-  DoubleSide,
-  Float32BufferAttribute,
   Group,
   Mesh,
   MeshStandardMaterial,
   TubeGeometry,
   Vector3,
-  type Material,
   type MeshStandardMaterialParameters,
 } from "three";
-import type { CellItem, CellModelAsset, ViewMode } from "../data/cells";
+import type { CosmicObject, ViewMode } from "../data/cosmicObjects";
 
-type CellSceneProps = {
-  cell: CellItem;
-  activeOrganelle: string;
+type CosmicSceneProps = {
+  object: CosmicObject;
+  activeFeature: string;
   viewMode: ViewMode;
   crossSection: boolean;
   autoRotate: boolean;
   resetKey: number;
+  activeObservation: string | null;
 };
 
 type MaterialProps = {
   id: string;
-  activeOrganelle: string;
+  activeFeature: string;
   viewMode: ViewMode;
   color: string;
   opacity?: number;
@@ -35,860 +34,711 @@ type MaterialProps = {
   metalness?: number;
 };
 
-function CellMaterial({
+function AtomMaterial({
   id,
-  activeOrganelle,
+  activeFeature,
   viewMode,
   color,
   opacity = 1,
-  roughness = 0.66,
-  metalness = 0.03,
+  roughness = 0.38,
+  metalness = 0.12,
 }: MaterialProps) {
-  const active = id === activeOrganelle;
+  const active = id === activeFeature;
   const dimmed = viewMode === "focus" && !active;
   const material: MeshStandardMaterialParameters = {
     color,
     roughness,
     metalness,
     transparent: opacity < 1 || dimmed,
-    opacity: dimmed ? Math.min(opacity, 0.18) : opacity,
+    opacity: dimmed ? Math.min(opacity, 0.14) : opacity,
     emissive: active ? color : "#000000",
-    emissiveIntensity: active ? 0.34 : 0,
+    emissiveIntensity: active ? 0.42 : 0,
   };
 
   return <meshStandardMaterial {...material} />;
 }
 
-type TubeProps = {
-  id: string;
-  color: string;
-  points: Array<[number, number, number]>;
-  radius?: number;
-  activeOrganelle: string;
+type CommonModelProps = {
+  activeFeature: string;
   viewMode: ViewMode;
+  crossSection: boolean;
+  activeObservation?: string | null;
 };
 
-function CurveTube({
-  id,
-  color,
-  points,
-  radius = 0.035,
-  activeOrganelle,
-  viewMode,
-}: TubeProps) {
-  const geometry = useMemo(() => {
-    const curve = new CatmullRomCurve3(
-      points.map((point) => new Vector3(point[0], point[1], point[2])),
-    );
-    return new TubeGeometry(curve, 80, radius, 12, false);
-  }, [points, radius]);
+type AtomProps = CommonModelProps & {
+  id: string;
+  position: [number, number, number];
+  radius: number;
+  color: string;
+  opacity?: number;
+};
 
+function Atom({ id, position, radius, color, opacity = 1, activeFeature, viewMode }: AtomProps) {
   return (
-    <mesh geometry={geometry} castShadow receiveShadow>
-      <CellMaterial
-        id={id}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-        color={color}
-        roughness={0.58}
-      />
+    <mesh position={position} castShadow receiveShadow>
+      <sphereGeometry args={[radius, 36, 36]} />
+      <AtomMaterial id={id} activeFeature={activeFeature} viewMode={viewMode} color={color} opacity={opacity} />
     </mesh>
   );
 }
 
-type CommonModelProps = {
-  activeOrganelle: string;
-  viewMode: ViewMode;
-  crossSection: boolean;
+type BondProps = CommonModelProps & {
+  id: string;
+  from: [number, number, number];
+  to: [number, number, number];
+  radius?: number;
+  color: string;
 };
 
-function applyAssetVertexColors(mesh: Mesh, cell: CellItem) {
-  const geometry = mesh.geometry;
-  const position = geometry.getAttribute("position");
-  if (!position) {
-    return;
-  }
+function Bond({ id, from, to, radius = 0.055, color, activeFeature, viewMode }: BondProps) {
+  const geometry = useMemo(() => {
+    const mid: [number, number, number] = [
+      (from[0] + to[0]) / 2,
+      (from[1] + to[1]) / 2,
+      (from[2] + to[2]) / 2,
+    ];
+    const curve = new CatmullRomCurve3([from, mid, to].map(([x, y, z]) => new Vector3(x, y, z)));
+    return new TubeGeometry(curve, 24, radius, 10, false);
+  }, [from, to, radius]);
 
-  geometry.computeBoundingBox();
-  const box = geometry.boundingBox;
-  if (!box) {
-    return;
-  }
-
-  const sizeX = Math.max(box.max.x - box.min.x, 0.001);
-  const sizeY = Math.max(box.max.y - box.min.y, 0.001);
-  const sizeZ = Math.max(box.max.z - box.min.z, 0.001);
-  const palette = [
-    new Color(cell.color),
-    new Color(cell.accent),
-    ...cell.organelles.map((organelle) => new Color(organelle.color)),
-  ];
-  const highlight = new Color("#fff4d8");
-  const shadow = new Color("#3d4a72");
-  const colors: number[] = [];
-
-  for (let index = 0; index < position.count; index += 1) {
-    const x = position.getX(index);
-    const y = position.getY(index);
-    const z = position.getZ(index);
-    const nx = (x - box.min.x) / sizeX;
-    const ny = (y - box.min.y) / sizeY;
-    const nz = (z - box.min.z) / sizeZ;
-    const flow = Math.sin(nx * 11.6 + ny * 4.8) + Math.cos(ny * 9.4 + nz * 7.2);
-    const paletteIndex = Math.abs(Math.floor((flow + nx * 3.2 + ny * 2.6) * palette.length)) % palette.length;
-    const color = new Color(cell.color).lerp(palette[paletteIndex], 0.48);
-    color.lerp(highlight, Math.max(0, nz - 0.24) * 0.22);
-    color.lerp(shadow, Math.max(0, 0.32 - nz) * 0.12);
-    colors.push(color.r, color.g, color.b);
-  }
-
-  geometry.setAttribute("color", new Float32BufferAttribute(colors, 3));
+  return (
+    <mesh geometry={geometry} castShadow receiveShadow>
+      <AtomMaterial id={id} activeFeature={activeFeature} viewMode={viewMode} color={color} roughness={0.44} />
+    </mesh>
+  );
 }
 
-function createAssetMaterial({
-  original,
-  cell,
-  meshIndex,
-  viewMode,
-  crossSection,
-}: {
-  original: Mesh["material"];
-  cell: CellItem;
-  meshIndex: number;
-  viewMode: ViewMode;
-  crossSection: boolean;
-}) {
-  const source = Array.isArray(original) ? original[0] : original;
-  const sourceMaterial = source as Partial<MeshStandardMaterial>;
-  const material = new MeshStandardMaterial({
-    color: "#ffffff",
-    map: sourceMaterial.map ?? null,
-    normalMap: sourceMaterial.normalMap ?? null,
-    roughnessMap: sourceMaterial.roughnessMap ?? null,
-    metalnessMap: sourceMaterial.metalnessMap ?? null,
-    side: DoubleSide,
-    vertexColors: true,
-    transparent: crossSection || viewMode === "focus" || sourceMaterial.transparent,
-    opacity: crossSection ? 0.92 : viewMode === "focus" ? 0.95 : sourceMaterial.opacity ?? 1,
-    roughness: Math.min(0.82, sourceMaterial.roughness ?? 0.46),
-    metalness: Math.min(0.12, sourceMaterial.metalness ?? 0.03),
-    emissive: new Color(cell.accent).lerp(new Color("#ffffff"), 0.58),
-    emissiveIntensity: viewMode === "focus" ? 0.045 : 0.016,
+// ── Cosmic object 3D models ───────────────────────────────────────────────────
+
+// Electromagnetic Wave — sinusoidal E and B field tubes, propagation arrow, photon sphere
+function EMWaveModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+  const nPoints = 40;
+  const xRange = 3.0;
+  const amplitude = 0.9;
+
+  const eFieldGeometry = useMemo(() => {
+    const points: Vector3[] = [];
+    for (let i = 0; i <= nPoints; i++) {
+      const t = i / nPoints;
+      const x = (t - 0.5) * xRange * 2;
+      const y = amplitude * Math.sin(t * Math.PI * 2.5);
+      points.push(new Vector3(x, y, 0));
+    }
+    return new TubeGeometry(new CatmullRomCurve3(points), 64, 0.06, 10, false);
+  }, []);
+
+  const bFieldGeometry = useMemo(() => {
+    const points: Vector3[] = [];
+    for (let i = 0; i <= nPoints; i++) {
+      const t = i / nPoints;
+      const x = (t - 0.5) * xRange * 2;
+      const z = amplitude * Math.sin(t * Math.PI * 2.5);
+      points.push(new Vector3(x, 0, z));
+    }
+    return new TubeGeometry(new CatmullRomCurve3(points), 64, 0.06, 10, false);
+  }, []);
+
+  return (
+    <group scale={[0.95, 0.95, 0.95]}>
+      {/* Propagation axis */}
+      <Bond id="eField" from={[-3.1, 0, 0]} to={[3.1, 0, 0]} radius={0.018} color="#c8c8ff" activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
+      {/* E-field sinusoidal wave (violet, Y-axis oscillation) */}
+      <mesh geometry={eFieldGeometry} castShadow>
+        <AtomMaterial id="eField" activeFeature={activeFeature} viewMode={viewMode} color="#7c4dff" opacity={crossSection ? 0.55 : 0.88} roughness={0.28} metalness={0.18} />
+      </mesh>
+      {/* B-field sinusoidal wave (teal, Z-axis oscillation) */}
+      <mesh geometry={bFieldGeometry} castShadow>
+        <AtomMaterial id="bField" activeFeature={activeFeature} viewMode={viewMode} color="#00897b" opacity={crossSection ? 0.55 : 0.88} roughness={0.28} metalness={0.18} />
+      </mesh>
+      {/* Photon sphere at E-field wave crest */}
+      <Atom id="photonPacket" position={[0, amplitude, 0]} radius={0.24} color="#ffd740" opacity={0.92} activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
+      {/* Arrow tip marking propagation direction */}
+      <Atom id="eField" position={[3.25, 0, 0]} radius={0.13} color="#c8c8ff" activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
+    </group>
+  );
+}
+
+// Proton — central nucleon + 3 quark spheres + gluon flux tubes + charge cloud
+function ProtonModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+  const quarkPositions: [number, number, number][] = [
+    [0, 0.72, 0],
+    [-0.62, -0.36, 0],
+    [0.62, -0.36, 0],
+  ];
+  const quarkColors = ["#e53935", "#e53935", "#1565c0"];
+
+  return (
+    <group scale={[1.1, 1.1, 1.1]}>
+      {/* Charge cloud (outermost) */}
+      <mesh>
+        <sphereGeometry args={[1.58, 32, 32]} />
+        <AtomMaterial id="charge" activeFeature={activeFeature} viewMode={viewMode} color="#ffd740" opacity={crossSection ? 0.04 : 0.08} />
+      </mesh>
+      {/* Nucleon body */}
+      <mesh>
+        <sphereGeometry args={[1.08, 32, 32]} />
+        <AtomMaterial id="charge" activeFeature={activeFeature} viewMode={viewMode} color="#b71c1c" opacity={crossSection ? 0.28 : 0.38} roughness={0.5} metalness={0.1} />
+      </mesh>
+      {/* Gluon flux tube bonds between quarks */}
+      {quarkPositions.map((pos, i) => {
+        const next = quarkPositions[(i + 1) % 3];
+        return (
+          <Bond key={`g-${i}`} id="gluon" from={pos} to={next} radius={0.052} color="#ff8f00" activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
+        );
+      })}
+      {/* Three quarks */}
+      {quarkPositions.map((pos, i) => (
+        <Atom key={`q-${i}`} id="quark" position={pos} radius={0.35} color={quarkColors[i]} activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
+      ))}
+    </group>
+  );
+}
+
+// Main-Sequence Star — layered spheres for zones + corona tori + granule patches
+function MainStarModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+  return (
+    <group scale={[0.82, 0.82, 0.82]}>
+      {/* Outer glow halo */}
+      <mesh>
+        <sphereGeometry args={[2.8, 24, 24]} />
+        <AtomMaterial id="corona" activeFeature={activeFeature} viewMode={viewMode} color="#ffe082" opacity={0.04} />
+      </mesh>
+      {/* Corona wispy torus rings at varied inclinations */}
+      {([0, 0.6, 1.1, 1.7] as number[]).map((rotX, i) => (
+        <mesh key={`cr-${i}`} rotation={[rotX, i * 0.8, 0]}>
+          <torusGeometry args={[2.12 + i * 0.08, 0.055, 8, 80]} />
+          <AtomMaterial id="corona" activeFeature={activeFeature} viewMode={viewMode} color="#ffe082" opacity={0.15} roughness={0.5} metalness={0.1} />
+        </mesh>
+      ))}
+      {/* Convective zone / photosphere surface */}
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[1.85, 48, 48]} />
+        <AtomMaterial id="convectiveZone" activeFeature={activeFeature} viewMode={viewMode} color="#ef6c00" roughness={0.6} metalness={0.08} />
+      </mesh>
+      {/* Surface granule patches */}
+      {([
+        [1.58, 0.82, 0.22], [-1.42, 1.02, 0.58], [0.38, -1.72, 0.82],
+        [1.22, -0.62, 1.42], [-0.82, -1.22, 1.02], [1.58, 0.22, -1.02],
+      ] as [number, number, number][]).map((pos, i) => (
+        <Atom key={`gr-${i}`} id="convectiveZone" position={pos} radius={0.22} color="#ff8f00" activeFeature={activeFeature} viewMode={viewMode} crossSection={crossSection} />
+      ))}
+      {/* Radiative zone (inner, partially opaque) */}
+      <mesh>
+        <sphereGeometry args={[1.2, 32, 32]} />
+        <AtomMaterial id="radiativeZone" activeFeature={activeFeature} viewMode={viewMode} color="#ff8f00" opacity={crossSection ? 0.7 : 0.3} roughness={0.4} metalness={0.1} />
+      </mesh>
+      {/* Fusion core */}
+      <mesh>
+        <sphereGeometry args={[0.55, 32, 32]} />
+        <AtomMaterial id="coreFusion" activeFeature={activeFeature} viewMode={viewMode} color="#fff9c4" roughness={0.3} metalness={0.05} />
+      </mesh>
+    </group>
+  );
+}
+
+// Gravitational wave spacetime grid — two perpendicular animated wireframe planes
+// showing the GW "+" polarisation deforming the spacetime fabric.
+function GravitationalWaveGrid() {
+  const N = 30;           // grid lines per axis
+  const extent = 4.8;    // half-size in world units
+  const W = N + 1;        // vertex count per axis
+  const step = (extent * 2) / N;
+
+  // Build a flat NxN grid of line-segment pairs once; Y is animated each frame.
+  const geometry = useMemo(() => {
+    const verts = new Float32Array(W * W * 3);
+    let vi = 0;
+    for (let i = 0; i <= N; i++) {
+      for (let j = 0; j <= N; j++) {
+        verts[vi++] = -extent + i * step;
+        verts[vi++] = 0;
+        verts[vi++] = -extent + j * step;
+      }
+    }
+    const idxs: number[] = [];
+    for (let i = 0; i <= N; i++) {
+      for (let j = 0; j < N; j++) {
+        idxs.push(i * W + j, i * W + j + 1);   // row segments (constant i)
+        idxs.push(j * W + i, (j + 1) * W + i); // col segments (constant j)
+      }
+    }
+    const geo = new BufferGeometry();
+    geo.setAttribute("position", new BufferAttribute(verts, 3));
+    geo.setIndex(idxs);
+    return geo;
+  }, []);
+
+  // Each frame: displace Y with a decaying outward sinusoid (radial GW ripple).
+  useFrame(({ clock }) => {
+    const t = clock.elapsedTime;
+    const pos = geometry.attributes.position as BufferAttribute;
+    for (let i = 0; i <= N; i++) {
+      for (let j = 0; j <= N; j++) {
+        const x = -extent + i * step;
+        const z = -extent + j * step;
+        const r = Math.sqrt(x * x + z * z);
+        // Amplitude decays as 1/(1 + r·k) to simulate 1/r spreading with a soft near-field floor.
+        const y = r < 0.22 ? 0 : (0.46 / (1 + r * 0.28)) * Math.sin(r * 2.1 - t * 3.4);
+        pos.setY(i * W + j, y);
+      }
+    }
+    pos.needsUpdate = true;
   });
 
-  material.envMapIntensity = 0.75 * (cell.modelAsset?.exposure ?? 1);
-  material.needsUpdate = true;
-  return material;
+  return (
+    <group>
+      {/* Horizontal spacetime sheet (XZ world plane, wave in Y) */}
+      <lineSegments geometry={geometry}>
+        <lineBasicMaterial color="#29b6f6" opacity={0.38} transparent />
+      </lineSegments>
+      {/* Vertical spacetime sheet (rotated to YZ world plane, same wave now in X)
+          Together the two planes show the "+" polarisation cross-section */}
+      <lineSegments geometry={geometry} rotation={[0, 0, Math.PI / 2]}>
+        <lineBasicMaterial color="#29b6f6" opacity={0.2} transparent />
+      </lineSegments>
+    </group>
+  );
 }
 
-function createNativeAssetMaterial({
-  original,
-  asset,
-  crossSection,
-}: {
-  original: Mesh["material"];
-  asset: CellModelAsset;
-  crossSection: boolean;
-}) {
-  const cloneMaterial = (source: Material) => {
-    const material = source.clone();
-    material.side = DoubleSide;
-    material.transparent = crossSection || material.transparent;
-    material.opacity = crossSection ? Math.min(material.opacity, 0.86) : material.opacity;
+// Two orbiting bodies each driving their own ripple in the spacetime grid.
+// Primary (orange, heavier) orbits at r1; secondary (pale, lighter) at r2.
+function GravitationalWaveBinary() {
+  const N = 30;
+  const extent = 4.8;
+  const W = N + 1;
+  const step = (extent * 2) / N;
 
-    if (material instanceof MeshStandardMaterial) {
-      const displayMap = material.map ?? null;
-      if (displayMap) {
-        displayMap.anisotropy = 8;
-        displayMap.needsUpdate = true;
+  // Orbital parameters — primary is 60 % of total mass so orbits closer to barycentre
+  const orbitSpeed = 1.1;
+  const separation = 2.4;
+  const orbitR1 = separation * 0.40;  // primary orbit radius
+  const orbitR2 = separation * 0.60;  // secondary orbit radius
+
+  const geometry = useMemo(() => {
+    const verts = new Float32Array(W * W * 3);
+    let vi = 0;
+    for (let i = 0; i <= N; i++) {
+      for (let j = 0; j <= N; j++) {
+        verts[vi++] = -extent + i * step;
+        verts[vi++] = 0;
+        verts[vi++] = -extent + j * step;
       }
-      material.vertexColors = false;
-      material.emissive = new Color("#fff8eb");
-      material.emissiveMap = displayMap;
-      material.emissiveIntensity = 0.07 * (asset.exposure ?? 1);
-      material.envMapIntensity = 0.62 * (asset.exposure ?? 1);
-      material.roughness = Math.max(0.34, Math.min(material.roughness, 0.58));
-      material.metalness = Math.min(material.metalness, 0.08);
-      material.color.setRGB(1.04, 1.035, 1.02);
     }
+    const idxs: number[] = [];
+    for (let i = 0; i <= N; i++) {
+      for (let j = 0; j < N; j++) {
+        idxs.push(i * W + j, i * W + j + 1);
+        idxs.push(j * W + i, (j + 1) * W + i);
+      }
+    }
+    const geo = new BufferGeometry();
+    geo.setAttribute("position", new BufferAttribute(verts, 3));
+    geo.setIndex(idxs);
+    return geo;
+  }, []);
 
-    material.needsUpdate = true;
-    return material;
+  const star1Ref = useRef<Mesh>(null);
+  const star2Ref = useRef<Mesh>(null);
+
+  useFrame(({ clock }) => {
+    const t = clock.elapsedTime;
+    const angle = t * orbitSpeed;
+
+    // Barycentre-centred orbital positions (in XZ plane)
+    const px1 =  orbitR1 * Math.cos(angle);
+    const pz1 =  orbitR1 * Math.sin(angle);
+    const px2 = -orbitR2 * Math.cos(angle);
+    const pz2 = -orbitR2 * Math.sin(angle);
+
+    star1Ref.current?.position.set(px1, 0, pz1);
+    star2Ref.current?.position.set(px2, 0, pz2);
+
+    // Grid: superpose two decaying ripples, one from each orbiting source
+    const pos = geometry.attributes.position as BufferAttribute;
+    for (let i = 0; i <= N; i++) {
+      for (let j = 0; j <= N; j++) {
+        const x = -extent + i * step;
+        const z = -extent + j * step;
+
+        const dr1 = Math.sqrt((x - px1) ** 2 + (z - pz1) ** 2);
+        const dr2 = Math.sqrt((x - px2) ** 2 + (z - pz2) ** 2);
+
+        const y1 = dr1 < 0.22 ? 0 : (0.34 / (1 + dr1 * 0.3)) * Math.sin(dr1 * 2.1 - t * 3.4);
+        const y2 = dr2 < 0.22 ? 0 : (0.26 / (1 + dr2 * 0.3)) * Math.sin(dr2 * 2.1 - t * 3.4);
+
+        pos.setY(i * W + j, y1 + y2);
+      }
+    }
+    pos.needsUpdate = true;
+  });
+
+  return (
+    <group>
+      {/* Spacetime sheets */}
+      <lineSegments geometry={geometry}>
+        <lineBasicMaterial color="#29b6f6" opacity={0.38} transparent />
+      </lineSegments>
+      <lineSegments geometry={geometry} rotation={[0, 0, Math.PI / 2]}>
+        <lineBasicMaterial color="#29b6f6" opacity={0.20} transparent />
+      </lineSegments>
+
+      {/* Individual orbit paths */}
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[orbitR1, 0.014, 8, 80]} />
+        <meshStandardMaterial color="#ff7043" transparent opacity={0.22} />
+      </mesh>
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[orbitR2, 0.012, 8, 80]} />
+        <meshStandardMaterial color="#ffccbc" transparent opacity={0.18} />
+      </mesh>
+
+      {/* Primary star — larger, orange */}
+      <mesh ref={star1Ref}>
+        <sphereGeometry args={[0.36, 24, 24]} />
+        <meshStandardMaterial color="#ff7043" emissive="#ff4010" emissiveIntensity={0.7} />
+      </mesh>
+
+      {/* Secondary star — smaller, pale */}
+      <mesh ref={star2Ref}>
+        <sphereGeometry args={[0.25, 20, 20]} />
+        <meshStandardMaterial color="#ffccbc" emissive="#ffaa80" emissiveIntensity={0.55} />
+      </mesh>
+    </group>
+  );
+}
+
+// Neutron Star — dense sphere + magnetosphere loops + pulsed beam cones
+// Observation modes: radio shows beams; x-ray shows hot surface; gw shows ripple rings
+function NeutronStarModel({ activeFeature, viewMode, crossSection, activeObservation = null }: CommonModelProps) {
+  const obs = activeObservation;
+  // When an observation is active, disable focus-mode dimming so obs colours dominate
+  const obsViewMode: ViewMode = obs ? "mesh" : viewMode;
+
+  // Per-observation opacity overrides
+  const glowOp   = obs === "radio-telescope" || obs === "gravitational-wave" ? 0.03 : 0.12;
+  const ringOp   = (i: number) => {
+    if (obs === "radio-telescope")   return 0.04;
+    if (obs === "xray-imaging")      return 0.42 + i * 0.08;
+    if (obs === "gravitational-wave") return 0.04;
+    return 0.22 + i * 0.07;
   };
+  const coreOp   = obs === "radio-telescope" ? 0.15 : 1.0;
+  const coreColor = obs === "xray-imaging" ? "#ffffff" : "#e0f7fa";
+  const beamOp   = obs === "xray-imaging" ? 0.22
+    : obs === "gravitational-wave"   ? 0.05
+    : obs === "radio-telescope"      ? 0.92
+    : crossSection                   ? 0.24 : 0.48;
+  const beamColor = obs === "radio-telescope" ? "#e0f7fa" : "#80deea";
 
-  return Array.isArray(original) ? original.map(cloneMaterial) : cloneMaterial(original);
-}
+  const beamRef = useRef<Group>(null);
 
-function AssetCellModel({
-  cell,
-  asset,
-  viewMode,
-  crossSection,
-}: CommonModelProps & {
-  cell: CellItem;
-  asset: CellModelAsset;
-}) {
-  const { scene } = useGLTF(asset.url);
-  const clonedScene = useMemo(() => {
-    const clone = scene.clone(true);
-    let meshIndex = 0;
-
-    clone.traverse((node) => {
-      const mesh = node as Mesh;
-      if (!mesh.isMesh) {
-        return;
-      }
-
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      if (asset.materialMode === "native") {
-        mesh.material = createNativeAssetMaterial({
-          original: mesh.material,
-          asset,
-          crossSection,
-        });
-      } else {
-        mesh.geometry.computeVertexNormals();
-        applyAssetVertexColors(mesh, cell);
-        mesh.material = createAssetMaterial({
-          original: mesh.material,
-          cell,
-          meshIndex,
-          viewMode,
-          crossSection,
-        });
-      }
-      meshIndex += 1;
-    });
-
-    return clone;
-  }, [cell, scene, viewMode, crossSection]);
+  useFrame(({ clock }) => {
+    if (beamRef.current) {
+      // Faster, more dramatic pulse in radio mode
+      const freq = obs === "radio-telescope" ? 6.0 : 2.8;
+      const amp  = obs === "radio-telescope" ? 0.18 : 0.1;
+      const scale = (1 - amp) + amp * Math.abs(Math.sin(clock.elapsedTime * freq));
+      beamRef.current.scale.set(1, scale, 1);
+    }
+  });
 
   return (
-    <group
-      position={asset.position ?? [0, 0, 0]}
-      rotation={asset.rotation ?? [0, 0, 0]}
-      scale={[asset.scale, asset.scale, asset.scale]}
-    >
-      <Center>
-        <primitive object={clonedScene} />
-      </Center>
-    </group>
-  );
-}
+    <group>
+      {/* Gravitational wave spacetime grid (gw observation only) */}
+      {obs === "gravitational-wave" && <GravitationalWaveGrid />}
 
-function Dots({
-  id,
-  color,
-  activeOrganelle,
-  viewMode,
-  count,
-  spread,
-}: CommonModelProps & {
-  id: string;
-  color: string;
-  count: number;
-  spread: [number, number, number];
-}) {
-  const dots = useMemo(
-    () =>
-      Array.from({ length: count }, (_, index) => {
-        const a = index * 1.71;
-        const b = index * 2.37;
-        return [
-          Math.sin(a) * spread[0],
-          Math.cos(b) * spread[1],
-          Math.sin(a + b) * spread[2],
-        ] as [number, number, number];
-      }),
-    [count, spread],
-  );
+      {/* Soft glow shell */}
+      <mesh>
+        <sphereGeometry args={[1.1, 24, 24]} />
+        <AtomMaterial id="neutronCore" activeFeature={activeFeature} viewMode={obsViewMode} color="#b3e5fc" opacity={glowOp} />
+      </mesh>
 
-  return (
-    <>
-      {dots.map((position, index) => (
-        <mesh key={`${id}-${index}`} position={position} castShadow>
-          <sphereGeometry args={[0.055 + (index % 3) * 0.018, 18, 18]} />
-          <CellMaterial
-            id={id}
-            activeOrganelle={activeOrganelle}
-            viewMode={viewMode}
-            color={color}
-            opacity={0.92}
-          />
+      {/* Magnetosphere field-line loops — thicker and more distinct per ring */}
+      {([0, 0.7, 1.4] as number[]).map((angle, i) => (
+        <mesh key={`mf-${i}`} rotation={[angle, i * 1.2, 0]}>
+          <torusGeometry args={[1.5 + i * 0.3, 0.065, 8, 72]} />
+          <AtomMaterial id="magnetosphere" activeFeature={activeFeature} viewMode={obsViewMode} color="#0288d1" opacity={ringOp(i)} roughness={0.4} metalness={0.2} />
         </mesh>
       ))}
-    </>
-  );
-}
 
-function Nucleus({
-  id = "nucleus",
-  position,
-  scale,
-  activeOrganelle,
-  viewMode,
-  color = "#7047a8",
-}: CommonModelProps & {
-  id?: string;
-  position: [number, number, number];
-  scale: [number, number, number];
-  color?: string;
-}) {
-  return (
-    <group position={position} scale={scale}>
+      {/* Dense neutron core */}
       <mesh castShadow receiveShadow>
-        <sphereGeometry args={[1, 48, 48]} />
-        <CellMaterial
-          id={id}
-          activeOrganelle={activeOrganelle}
-          viewMode={viewMode}
-          color={color}
-          opacity={0.92}
-          roughness={0.44}
-        />
+        <sphereGeometry args={[0.6, 36, 36]} />
+        <AtomMaterial id="neutronCore" activeFeature={activeFeature} viewMode={obsViewMode} color={coreColor} opacity={coreOp} roughness={0.55} metalness={0.35} />
       </mesh>
-      <mesh position={[0.2, 0.16, 0.38]} castShadow>
-        <sphereGeometry args={[0.23, 28, 28]} />
-        <CellMaterial
-          id={id}
-          activeOrganelle={activeOrganelle}
-          viewMode={viewMode}
-          color="#b56ad8"
-          opacity={0.9}
-        />
-      </mesh>
-    </group>
-  );
-}
 
-function Mitochondrion({
-  id = "mitochondrion",
-  position,
-  rotation = [0, 0, 0],
-  scale = [1, 1, 1],
-  activeOrganelle,
-  viewMode,
-}: CommonModelProps & {
-  id?: string;
-  position: [number, number, number];
-  rotation?: [number, number, number];
-  scale?: [number, number, number];
-}) {
-  return (
-    <group position={position} rotation={rotation} scale={scale}>
-      <mesh castShadow receiveShadow>
-        <capsuleGeometry args={[0.16, 0.46, 10, 24]} />
-        <CellMaterial
-          id={id}
-          activeOrganelle={activeOrganelle}
-          viewMode={viewMode}
-          color="#cf7042"
-        />
-      </mesh>
-      {[0, 1, 2].map((item) => (
-        <mesh key={item} position={[0, -0.18 + item * 0.18, 0.02]} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[0.09, 0.012, 8, 18]} />
-          <CellMaterial
-            id={id}
-            activeOrganelle={activeOrganelle}
-            viewMode={viewMode}
-            color="#f0b074"
-          />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-function PlantModel({ activeOrganelle, viewMode, crossSection }: CommonModelProps) {
-  return (
-    <group rotation={[0.1, -0.28, 0]}>
-      <RoundedBox args={[4.7, 2.7, 0.42]} radius={0.18} smoothness={8} position={[0, 0, 0]}>
-        <CellMaterial
-          id="cellWall"
-          activeOrganelle={activeOrganelle}
-          viewMode={viewMode}
-          color="#84ad4a"
-          opacity={crossSection ? 0.34 : 0.5}
-        />
-      </RoundedBox>
-      <RoundedBox args={[4.18, 2.24, 0.24]} radius={0.12} smoothness={8} position={[0.02, 0.02, 0.08]}>
-        <CellMaterial
-          id="cellWall"
-          activeOrganelle={activeOrganelle}
-          viewMode={viewMode}
-          color="#4f9f83"
-          opacity={0.24}
-        />
-      </RoundedBox>
-      <mesh position={[-0.45, -0.12, 0.32]} scale={[1.05, 0.78, 0.28]} castShadow>
-        <sphereGeometry args={[0.78, 46, 46]} />
-        <CellMaterial
-          id="vacuole"
-          activeOrganelle={activeOrganelle}
-          viewMode={viewMode}
-          color="#62bdd2"
-          opacity={0.74}
-        />
-      </mesh>
-      <Nucleus
-        position={[0.92, 0.42, 0.45]}
-        scale={[0.52, 0.52, 0.38]}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-        crossSection={crossSection}
-      />
-      {[
-        [-1.65, 0.48, 0.28],
-        [1.68, -0.38, 0.3],
-        [-1.52, -0.62, 0.22],
-      ].map((position, index) => (
-        <group key={index} position={position as [number, number, number]} rotation={[0, 0, index * 0.7]}>
-          <mesh scale={[0.35, 0.18, 0.12]} castShadow>
-            <sphereGeometry args={[1, 30, 20]} />
-            <CellMaterial
-              id="chloroplast"
-              activeOrganelle={activeOrganelle}
-              viewMode={viewMode}
-              color="#67ad46"
-            />
+      {/* X-ray polar hot spots at magnetic poles */}
+      {obs === "xray-imaging" && (
+        <>
+          <mesh position={[0, 0.63, 0]}>
+            <sphereGeometry args={[0.13, 16, 16]} />
+            <meshStandardMaterial color="#ffffff" emissive="#88ddff" emissiveIntensity={2.4} transparent />
           </mesh>
-          <mesh rotation={[Math.PI / 2, 0, 0]} scale={[1, 0.82, 1]}>
-            <torusGeometry args={[0.22, 0.012, 8, 42]} />
-            <CellMaterial
-              id="chloroplast"
-              activeOrganelle={activeOrganelle}
-              viewMode={viewMode}
-              color="#9ed36a"
-            />
+          <mesh position={[0, -0.63, 0]}>
+            <sphereGeometry args={[0.13, 16, 16]} />
+            <meshStandardMaterial color="#ffffff" emissive="#88ddff" emissiveIntensity={2.4} transparent />
           </mesh>
-        </group>
-      ))}
-      <Mitochondrion
-        position={[0.28, -0.72, 0.42]}
-        rotation={[0.3, 0.2, 1.35]}
-        scale={[0.95, 0.95, 0.95]}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-        crossSection={crossSection}
-      />
-      <CurveTube
-        id="nucleus"
-        color="#ce785c"
-        points={[
-          [0.42, 0.12, 0.42],
-          [0.62, -0.06, 0.5],
-          [1.05, -0.08, 0.46],
-          [1.44, 0.06, 0.38],
-        ]}
-        radius={0.05}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-      />
-      <Dots
-        id="vacuole"
-        color="#c76ac5"
-        count={18}
-        spread={[1.72, 0.92, 0.42]}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-        crossSection={crossSection}
-      />
-    </group>
-  );
-}
-
-function WhiteBloodModel({ activeOrganelle, viewMode, crossSection }: CommonModelProps) {
-  return (
-    <group scale={[1.2, 1.2, 1.2]}>
-      <mesh castShadow receiveShadow>
-        <sphereGeometry args={[1.35, 64, 64]} />
-        <CellMaterial
-          id="membrane"
-          activeOrganelle={activeOrganelle}
-          viewMode={viewMode}
-          color="#d6d7e6"
-          opacity={crossSection ? 0.28 : 0.45}
-        />
-      </mesh>
-      {[
-        [-0.42, 0.22, 0.34],
-        [0.28, 0.06, 0.36],
-        [0.02, -0.42, 0.28],
-      ].map((position, index) => (
-        <Nucleus
-          key={index}
-          id="nucleus"
-          position={position as [number, number, number]}
-          scale={[0.42, 0.36, 0.28]}
-          color="#6c35a0"
-          activeOrganelle={activeOrganelle}
-          viewMode={viewMode}
-          crossSection={crossSection}
-        />
-      ))}
-      <Dots
-        id="granules"
-        color="#c06696"
-        count={30}
-        spread={[1.05, 1.02, 0.72]}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-        crossSection={crossSection}
-      />
-      <Dots
-        id="lysosome"
-        color="#8b54b7"
-        count={12}
-        spread={[0.92, 0.88, 0.62]}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-        crossSection={crossSection}
-      />
-    </group>
-  );
-}
-
-function NeuronModel({ activeOrganelle, viewMode, crossSection }: CommonModelProps) {
-  return (
-    <group rotation={[0.02, -0.2, 0]} scale={[1.05, 1.05, 1.05]}>
-      <Nucleus
-        id="soma"
-        position={[-0.55, 0, 0.08]}
-        scale={[0.64, 0.58, 0.44]}
-        color="#774eb2"
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-        crossSection={crossSection}
-      />
-      <mesh position={[-0.55, 0, 0]} scale={[0.94, 0.82, 0.62]} castShadow receiveShadow>
-        <sphereGeometry args={[1, 52, 52]} />
-        <CellMaterial
-          id="soma"
-          activeOrganelle={activeOrganelle}
-          viewMode={viewMode}
-          color="#8db5d8"
-          opacity={crossSection ? 0.36 : 0.55}
-        />
-      </mesh>
-      <CurveTube
-        id="axon"
-        color="#6b7dc6"
-        points={[
-          [0.04, 0.02, 0.04],
-          [0.72, -0.02, 0.02],
-          [1.56, 0.04, 0.02],
-          [2.35, -0.04, 0],
-        ]}
-        radius={0.08}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-      />
-      {[0.55, 1.06, 1.58, 2.08].map((x, index) => (
-        <mesh key={index} position={[x, 0, 0.02]} rotation={[0, 0, Math.PI / 2]} castShadow>
-          <capsuleGeometry args={[0.16, 0.24, 8, 24]} />
-          <CellMaterial
-            id="axon"
-            activeOrganelle={activeOrganelle}
-            viewMode={viewMode}
-            color="#bfd1df"
-            opacity={0.94}
-          />
-        </mesh>
-      ))}
-      {[
-        [
-          [-1.08, 0.28, 0],
-          [-1.55, 0.82, 0.08],
-          [-2.1, 1.03, 0],
-        ],
-        [
-          [-1.16, -0.18, 0],
-          [-1.7, -0.54, 0.05],
-          [-2.2, -0.9, 0],
-        ],
-        [
-          [-0.78, 0.58, 0.04],
-          [-0.82, 1.16, 0.02],
-          [-1.12, 1.58, 0],
-        ],
-        [
-          [-0.9, -0.55, 0.04],
-          [-0.92, -1.04, 0],
-          [-1.2, -1.44, 0.02],
-        ],
-      ].map((points, index) => (
-        <CurveTube
-          key={index}
-          id="dendrites"
-          color="#7d9bcf"
-          points={points as Array<[number, number, number]>}
-          radius={0.052}
-          activeOrganelle={activeOrganelle}
-          viewMode={viewMode}
-        />
-      ))}
-      <Dots
-        id="dendrites"
-        color="#b46ac7"
-        count={12}
-        spread={[2.2, 1.4, 0.2]}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-        crossSection={crossSection}
-      />
-    </group>
-  );
-}
-
-function EpithelialModel({ activeOrganelle, viewMode, crossSection }: CommonModelProps) {
-  return (
-    <group rotation={[0.08, -0.22, 0]} scale={[1.08, 1.08, 1.08]}>
-      <RoundedBox args={[2.4, 2.0, 0.72]} radius={0.1} smoothness={8} position={[0, -0.12, 0]}>
-        <CellMaterial
-          id="membrane"
-          activeOrganelle={activeOrganelle}
-          viewMode={viewMode}
-          color="#d79baa"
-          opacity={crossSection ? 0.32 : 0.52}
-        />
-      </RoundedBox>
-      {Array.from({ length: 12 }, (_, index) => (
-        <mesh
-          key={index}
-          position={[-1.1 + index * 0.2, 1.04, 0.08]}
-          rotation={[0, 0, 0]}
-          castShadow
-        >
-          <capsuleGeometry args={[0.045, 0.34, 8, 14]} />
-          <CellMaterial
-            id="microvilli"
-            activeOrganelle={activeOrganelle}
-            viewMode={viewMode}
-            color="#c86f80"
-          />
-        </mesh>
-      ))}
-      <Nucleus
-        position={[0.15, -0.2, 0.32]}
-        scale={[0.55, 0.5, 0.36]}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-        crossSection={crossSection}
-      />
-      <CurveTube
-        id="junctions"
-        color="#9f6cbd"
-        points={[
-          [-1.18, 0.74, 0.38],
-          [-0.6, 0.7, 0.44],
-          [0.1, 0.73, 0.4],
-          [0.96, 0.68, 0.42],
-        ]}
-        radius={0.04}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-      />
-      <Dots
-        id="nucleus"
-        color="#d082a2"
-        count={18}
-        spread={[0.96, 0.72, 0.38]}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-        crossSection={crossSection}
-      />
-    </group>
-  );
-}
-
-function BacteriaModel({ activeOrganelle, viewMode, crossSection }: CommonModelProps) {
-  return (
-    <group rotation={[0.02, 0.1, -0.02]} scale={[1.12, 1.12, 1.12]}>
-      <mesh rotation={[0, 0, Math.PI / 2]} castShadow receiveShadow>
-        <capsuleGeometry args={[0.78, 2.9, 14, 48]} />
-        <CellMaterial
-          id="cellWall"
-          activeOrganelle={activeOrganelle}
-          viewMode={viewMode}
-          color="#65b8ae"
-          opacity={crossSection ? 0.36 : 0.62}
-        />
-      </mesh>
-      <mesh rotation={[0, 0, Math.PI / 2]} scale={[0.88, 0.88, 0.82]}>
-        <capsuleGeometry args={[0.62, 2.6, 12, 40]} />
-        <CellMaterial
-          id="cellWall"
-          activeOrganelle={activeOrganelle}
-          viewMode={viewMode}
-          color="#235a74"
-          opacity={0.44}
-        />
-      </mesh>
-      <CurveTube
-        id="nucleoid"
-        color="#7a43ad"
-        points={[
-          [-0.9, 0.12, 0.3],
-          [-0.42, -0.14, 0.38],
-          [0.1, 0.18, 0.34],
-          [0.62, -0.12, 0.36],
-          [1.02, 0.06, 0.32],
-        ]}
-        radius={0.12}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-      />
-      <CurveTube
-        id="flagellum"
-        color="#b87438"
-        points={[
-          [1.82, -0.22, 0.08],
-          [2.35, -0.72, 0],
-          [2.95, -0.5, 0.02],
-          [3.55, -0.95, 0],
-        ]}
-        radius={0.055}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-      />
-      <Dots
-        id="nucleoid"
-        color="#e59b3a"
-        count={34}
-        spread={[1.42, 0.48, 0.36]}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-        crossSection={crossSection}
-      />
-    </group>
-  );
-}
-
-function AnimalModel({ activeOrganelle, viewMode, crossSection }: CommonModelProps) {
-  return (
-    <group rotation={[0.06, -0.34, 0]} scale={[1.08, 1.08, 1.08]}>
-      <mesh scale={[1.7, 1.25, 0.72]} castShadow receiveShadow>
-        <sphereGeometry args={[1, 64, 64]} />
-        <CellMaterial
-          id="membrane"
-          activeOrganelle={activeOrganelle}
-          viewMode={viewMode}
-          color="#9db6dc"
-          opacity={crossSection ? 0.28 : 0.48}
-        />
-      </mesh>
-      <Nucleus
-        position={[0.22, 0.18, 0.36]}
-        scale={[0.55, 0.55, 0.42]}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-        crossSection={crossSection}
-      />
-      <Mitochondrion
-        position={[-0.82, 0.44, 0.32]}
-        rotation={[0.4, 0.1, 1.12]}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-        crossSection={crossSection}
-      />
-      <Mitochondrion
-        position={[0.82, -0.42, 0.25]}
-        rotation={[0.1, 0.35, -0.75]}
-        scale={[0.9, 0.9, 0.9]}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-        crossSection={crossSection}
-      />
-      {[0, 1, 2, 3].map((index) => (
-        <mesh key={index} position={[-0.24 + index * 0.18, -0.56 + index * 0.08, 0.46]} rotation={[0.2, 0, 0.7]}>
-          <torusGeometry args={[0.38 + index * 0.035, 0.025, 10, 52]} />
-          <CellMaterial
-            id="golgi"
-            activeOrganelle={activeOrganelle}
-            viewMode={viewMode}
-            color="#d49057"
-          />
-        </mesh>
-      ))}
-      <Dots
-        id="nucleus"
-        color="#b35fc8"
-        count={28}
-        spread={[1.25, 0.85, 0.46]}
-        activeOrganelle={activeOrganelle}
-        viewMode={viewMode}
-        crossSection={crossSection}
-      />
-    </group>
-  );
-}
-
-function MuscleModel({ activeOrganelle, viewMode, crossSection }: CommonModelProps) {
-  return (
-    <group rotation={[0.15, -0.26, -0.03]} scale={[1.08, 1.08, 1.08]}>
-      <mesh rotation={[0, 0, Math.PI / 2]} scale={[0.95, 1, 0.82]} castShadow receiveShadow>
-        <capsuleGeometry args={[0.76, 2.9, 14, 48]} />
-        <CellMaterial
-          id="sarcolemma"
-          activeOrganelle={activeOrganelle}
-          viewMode={viewMode}
-          color="#d7b284"
-          opacity={crossSection ? 0.26 : 0.42}
-        />
-      </mesh>
-      {[-0.42, 0, 0.42].map((y, row) =>
-        [-0.58, 0.24, 1.06].map((x, index) => (
-          <mesh key={`${row}-${index}`} position={[x, y, 0.15]} rotation={[0, Math.PI / 2, 0]} castShadow>
-            <cylinderGeometry args={[0.13, 0.13, 0.86, 24]} />
-            <CellMaterial
-              id="myofibril"
-              activeOrganelle={activeOrganelle}
-              viewMode={viewMode}
-              color={index % 2 === 0 ? "#bd3d51" : "#cf6272"}
-            />
-          </mesh>
-        )),
+        </>
       )}
-      {[-1.1, 1.42].map((x, index) => (
-        <Nucleus
-          key={index}
-          id="mitochondria"
-          position={[x, 0.54 - index * 0.92, 0.36]}
-          scale={[0.26, 0.2, 0.18]}
-          color="#cf7042"
-          activeOrganelle={activeOrganelle}
-          viewMode={viewMode}
-          crossSection={crossSection}
-        />
-      ))}
-      {[0, 1, 2, 3, 4].map((index) => (
-        <CurveTube
-          key={index}
-          id="sarcolemma"
-          color="#ead2a7"
-          points={[
-            [-1.55 + index * 0.65, -0.86, 0.26],
-            [-1.45 + index * 0.65, -0.24, 0.34],
-            [-1.55 + index * 0.65, 0.72, 0.28],
-          ]}
-          radius={0.035}
-          activeOrganelle={activeOrganelle}
-          viewMode={viewMode}
-        />
-      ))}
+
+      {/* Pulse beams — central shaft + twin cones, animated */}
+      <group ref={beamRef}>
+        {/* Thin axial beam shaft */}
+        <mesh>
+          <cylinderGeometry args={[0.038, 0.038, 7.2, 8]} />
+          <AtomMaterial id="pulseBeam" activeFeature={activeFeature} viewMode={obsViewMode} color={beamColor} opacity={beamOp * 0.45} roughness={0.3} metalness={0.1} />
+        </mesh>
+        <mesh position={[0, 2.2, 0]} castShadow>
+          <coneGeometry args={[0.24, 3.8, 16]} />
+          <AtomMaterial id="pulseBeam" activeFeature={activeFeature} viewMode={obsViewMode} color={beamColor} opacity={beamOp} roughness={0.3} metalness={0.1} />
+        </mesh>
+        <mesh position={[0, -2.2, 0]} rotation={[Math.PI, 0, 0]} castShadow>
+          <coneGeometry args={[0.24, 3.8, 16]} />
+          <AtomMaterial id="pulseBeam" activeFeature={activeFeature} viewMode={obsViewMode} color={beamColor} opacity={beamOp} roughness={0.3} metalness={0.1} />
+        </mesh>
+      </group>
     </group>
   );
 }
 
-function CellModel({
-  cell,
-  activeOrganelle,
+// Black Hole — dark sphere + photon sphere torus + rotating accretion disk + jets + lensing ring
+function BlackHoleModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+  const diskRef = useRef<Group>(null);
+
+  useFrame((_, delta) => {
+    if (diskRef.current) {
+      diskRef.current.rotation.y += delta * 0.3;
+    }
+  });
+
+  return (
+    <group>
+      {/* Outer gravitational lensing ring */}
+      <mesh>
+        <torusGeometry args={[3.5, 0.022, 8, 120]} />
+        <AtomMaterial id="photonSphere" activeFeature={activeFeature} viewMode={viewMode} color="#eceff1" opacity={0.22} roughness={0.5} metalness={0.3} />
+      </mesh>
+      {/* Photon sphere */}
+      <mesh>
+        <torusGeometry args={[1.28, 0.04, 8, 80]} />
+        <AtomMaterial id="photonSphere" activeFeature={activeFeature} viewMode={viewMode} color="#607d8b" opacity={0.58} roughness={0.4} metalness={0.3} />
+      </mesh>
+      {/* Rotating accretion disk */}
+      <group ref={diskRef} rotation={[0.17, 0, 0]}>
+        <mesh>
+          <torusGeometry args={[2.4, 0.38, 16, 80]} />
+          <AtomMaterial id="accretionDisk" activeFeature={activeFeature} viewMode={viewMode} color="#b0bec5" opacity={crossSection ? 0.5 : 0.82} roughness={0.5} metalness={0.4} />
+        </mesh>
+        {/* Inner hot zone */}
+        <mesh>
+          <torusGeometry args={[1.6, 0.18, 16, 80]} />
+          <AtomMaterial id="accretionDisk" activeFeature={activeFeature} viewMode={viewMode} color="#ff8f00" opacity={crossSection ? 0.5 : 0.88} roughness={0.3} metalness={0.5} />
+        </mesh>
+      </group>
+      {/* Relativistic jets */}
+      <mesh position={[0, 2.8, 0]} castShadow>
+        <cylinderGeometry args={[0.06, 0.06, 4.5, 10]} />
+        <AtomMaterial id="jet" activeFeature={activeFeature} viewMode={viewMode} color="#cfd8dc" opacity={crossSection ? 0.3 : 0.52} roughness={0.3} metalness={0.2} />
+      </mesh>
+      <mesh position={[0, -2.8, 0]} castShadow>
+        <cylinderGeometry args={[0.06, 0.06, 4.5, 10]} />
+        <AtomMaterial id="jet" activeFeature={activeFeature} viewMode={viewMode} color="#cfd8dc" opacity={crossSection ? 0.3 : 0.52} roughness={0.3} metalness={0.2} />
+      </mesh>
+      {/* Event horizon — near-black sphere */}
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[0.85, 36, 36]} />
+        <AtomMaterial id="eventHorizon" activeFeature={activeFeature} viewMode={viewMode} color="#1a1a2e" roughness={0.05} metalness={0.9} />
+      </mesh>
+    </group>
+  );
+}
+
+// Exoplanet — planet with atmospheric layers + orbit ring + host star
+function ExoplanetModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+  return (
+    <group>
+      {/* Host star (distant, smaller sphere) */}
+      <group position={[-4.2, 0, 0]}>
+        <mesh castShadow>
+          <sphereGeometry args={[0.95, 32, 32]} />
+          <AtomMaterial id="hostStar" activeFeature={activeFeature} viewMode={viewMode} color="#ffe082" opacity={0.9} roughness={0.4} metalness={0.0} />
+        </mesh>
+        <mesh>
+          <sphereGeometry args={[1.35, 16, 16]} />
+          <AtomMaterial id="hostStar" activeFeature={activeFeature} viewMode={viewMode} color="#ffb300" opacity={0.1} />
+        </mesh>
+      </group>
+      {/* Orbit ring */}
+      <mesh rotation={[Math.PI / 2, 0.08, 0]}>
+        <torusGeometry args={[3.2, 0.026, 8, 100]} />
+        <AtomMaterial id="orbitRing" activeFeature={activeFeature} viewMode={viewMode} color="#2e7d32" opacity={0.38} roughness={0.6} metalness={0.1} />
+      </mesh>
+      {/* Atmosphere — three nested translucent shells */}
+      <mesh>
+        <sphereGeometry args={[1.1, 32, 32]} />
+        <AtomMaterial id="atmosphere" activeFeature={activeFeature} viewMode={viewMode} color="#ffe082" opacity={crossSection ? 0.04 : 0.07} />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[1.02, 32, 32]} />
+        <AtomMaterial id="atmosphere" activeFeature={activeFeature} viewMode={viewMode} color="#aed581" opacity={crossSection ? 0.1 : 0.14} />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[0.95, 32, 32]} />
+        <AtomMaterial id="atmosphere" activeFeature={activeFeature} viewMode={viewMode} color="#4fc3f7" opacity={crossSection ? 0.16 : 0.22} />
+      </mesh>
+      {/* Planet body */}
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[0.88, 36, 36]} />
+        <AtomMaterial id="atmosphere" activeFeature={activeFeature} viewMode={viewMode} color="#43a047" roughness={0.65} metalness={0.05} />
+      </mesh>
+    </group>
+  );
+}
+
+// Spiral Galaxy — bulge + disk + 4 logarithmic spiral arms + dark matter halo
+function GalaxyModel({ activeFeature, viewMode, crossSection }: CommonModelProps) {
+  const spiralGeometries = useMemo(() => {
+    return [0, 1, 2, 3].map((armIndex) => {
+      const points: Vector3[] = [];
+      for (let i = 0; i <= 22; i++) {
+        const theta = 0.4 + (i / 22) * 3.8;
+        const r = 1.1 * Math.exp(0.28 * theta);
+        const x = r * Math.cos(theta + armIndex * Math.PI * 0.5);
+        const z = r * Math.sin(theta + armIndex * Math.PI * 0.5);
+        const y = (i % 3 - 1) * 0.04;
+        points.push(new Vector3(x, y, z));
+      }
+      return new TubeGeometry(new CatmullRomCurve3(points), 40, 0.1, 8, false);
+    });
+  }, []);
+
+  return (
+    <group rotation={[0.22, 0, 0]} scale={[0.72, 0.72, 0.72]}>
+      {/* Dark matter halo — vast transparent sphere */}
+      <mesh>
+        <sphereGeometry args={[5.8, 16, 16]} />
+        <AtomMaterial id="darkMatterHalo" activeFeature={activeFeature} viewMode={viewMode} color="#4a148c" opacity={0.03} />
+      </mesh>
+      {/* Stellar disk torus */}
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[2.8, 0.22, 8, 80]} />
+        <AtomMaterial id="diskStars" activeFeature={activeFeature} viewMode={viewMode} color="#ce93d8" opacity={crossSection ? 0.4 : 0.62} roughness={0.6} metalness={0.1} />
+      </mesh>
+      {/* Spiral arms */}
+      {spiralGeometries.map((geo, i) => (
+        <mesh key={`arm-${i}`} geometry={geo} castShadow>
+          <AtomMaterial id="spiralArms" activeFeature={activeFeature} viewMode={viewMode} color="#e3f2fd" opacity={crossSection ? 0.5 : 0.72} roughness={0.4} metalness={0.15} />
+        </mesh>
+      ))}
+      {/* Central bulge */}
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[0.7, 32, 32]} />
+        <AtomMaterial id="centralBulge" activeFeature={activeFeature} viewMode={viewMode} color="#fff8e1" roughness={0.48} metalness={0.08} />
+      </mesh>
+    </group>
+  );
+}
+
+// Binary Star System — primary + secondary spheres, shared orbit ring, Roche lobe tori, accretion stream
+function BinaryStarModel({ activeFeature, viewMode, crossSection, activeObservation = null }: CommonModelProps) {
+  const streamGeometry = useMemo(() => {
+    const pts = [
+      new Vector3(1.05, 0, 0),
+      new Vector3(0.4, 0.3, 0),
+      new Vector3(0, 0.15, 0),
+      new Vector3(-0.35, 0.22, 0),
+      new Vector3(-1.0, 0, 0),
+    ];
+    return new TubeGeometry(new CatmullRomCurve3(pts), 32, 0.04, 8, false);
+  }, []);
+
+  const obs = activeObservation;
+
+  // Two-body orbital GW mode: replace static model entirely with animated version
+  if (obs === "gravitational-wave-binary") {
+    return (
+      <group scale={[0.84, 0.84, 0.84]}>
+        <GravitationalWaveBinary />
+      </group>
+    );
+  }
+
+  const obsViewMode: ViewMode = obs ? "mesh" : viewMode;
+  const starOp   = obs === "gravitational-wave" ? 0.18 : 1.0;
+  const streamOp = obs === "gravitational-wave" ? 0.08 : crossSection ? 0.55 : 0.72;
+  const orbitOp  = obs === "gravitational-wave" ? 0.08 : 0.28;
+
+  return (
+    <group scale={[0.84, 0.84, 0.84]}>
+      {/* Single-source GW spacetime grid */}
+      {obs === "gravitational-wave" && <GravitationalWaveGrid />}
+
+      {/* Shared orbit ring */}
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[2.4, 0.022, 8, 100]} />
+        <AtomMaterial id="rocheLobes" activeFeature={activeFeature} viewMode={obsViewMode} color="#ff8a65" opacity={orbitOp} roughness={0.6} metalness={0.1} />
+      </mesh>
+
+      {/* Primary star */}
+      <group position={[1.3, 0, 0]}>
+        <mesh>
+          <sphereGeometry args={[1.5, 16, 16]} />
+          <AtomMaterial id="primaryStar" activeFeature={activeFeature} viewMode={obsViewMode} color="#ff7043" opacity={0.06 * starOp} />
+        </mesh>
+        <mesh castShadow receiveShadow>
+          <sphereGeometry args={[1.05, 40, 40]} />
+          <AtomMaterial id="primaryStar" activeFeature={activeFeature} viewMode={obsViewMode} color="#ff7043" opacity={starOp} roughness={0.55} metalness={0.05} />
+        </mesh>
+        <mesh>
+          <sphereGeometry args={[0.5, 24, 24]} />
+          <AtomMaterial id="primaryStar" activeFeature={activeFeature} viewMode={obsViewMode} color="#fff9c4" opacity={(crossSection ? 0.85 : 0.35) * starOp} roughness={0.3} metalness={0.05} />
+        </mesh>
+      </group>
+
+      {/* Secondary star */}
+      <group position={[-1.6, 0, 0]}>
+        <mesh>
+          <sphereGeometry args={[1.15, 16, 16]} />
+          <AtomMaterial id="secondaryStar" activeFeature={activeFeature} viewMode={obsViewMode} color="#ffccbc" opacity={0.05 * starOp} />
+        </mesh>
+        <mesh castShadow receiveShadow>
+          <sphereGeometry args={[0.78, 36, 36]} />
+          <AtomMaterial id="secondaryStar" activeFeature={activeFeature} viewMode={obsViewMode} color="#ffccbc" opacity={starOp} roughness={0.58} metalness={0.04} />
+        </mesh>
+        <mesh>
+          <sphereGeometry args={[0.35, 24, 24]} />
+          <AtomMaterial id="secondaryStar" activeFeature={activeFeature} viewMode={obsViewMode} color="#fff9c4" opacity={(crossSection ? 0.85 : 0.28) * starOp} roughness={0.3} metalness={0.05} />
+        </mesh>
+      </group>
+
+      {/* Roche lobe outlines */}
+      <mesh position={[1.3, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[1.12, 0.018, 8, 60]} />
+        <AtomMaterial id="rocheLobes" activeFeature={activeFeature} viewMode={obsViewMode} color="#ff8a65" opacity={0.22 * (obs === "gravitational-wave" ? 0.3 : 1)} roughness={0.5} metalness={0.1} />
+      </mesh>
+      <mesh position={[-1.6, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.85, 0.016, 8, 60]} />
+        <AtomMaterial id="rocheLobes" activeFeature={activeFeature} viewMode={obsViewMode} color="#ff8a65" opacity={0.18 * (obs === "gravitational-wave" ? 0.3 : 1)} roughness={0.5} metalness={0.1} />
+      </mesh>
+
+      {/* Accretion stream */}
+      <mesh geometry={streamGeometry}>
+        <AtomMaterial id="accretionStream" activeFeature={activeFeature} viewMode={obsViewMode} color="#bf360c" opacity={streamOp} roughness={0.4} metalness={0.25} />
+      </mesh>
+    </group>
+  );
+}
+
+// ── Model router ─────────────────────────────────────────────────────────────
+
+function CosmicModel({
+  object,
+  activeFeature,
   viewMode,
   crossSection,
   autoRotate,
-}: Omit<CellSceneProps, "resetKey">) {
+  activeObservation,
+}: Omit<CosmicSceneProps, "resetKey">) {
   const group = useRef<Group>(null);
 
   useFrame((_, delta) => {
@@ -897,36 +747,29 @@ function CellModel({
     }
   });
 
-  const common = { activeOrganelle, viewMode, crossSection };
+  const common: CommonModelProps = { activeFeature, viewMode, crossSection, activeObservation };
 
   return (
     <group ref={group} position={[0, 0, 0]}>
-      {cell.modelAsset ? (
-        <AssetCellModel cell={cell} asset={cell.modelAsset} {...common} />
-      ) : (
-        <>
-          {cell.modelKind === "plant" && <PlantModel {...common} />}
-          {cell.modelKind === "whiteBlood" && <WhiteBloodModel {...common} />}
-          {cell.modelKind === "neuron" && <NeuronModel {...common} />}
-          {cell.modelKind === "epithelial" && <EpithelialModel {...common} />}
-          {cell.modelKind === "bacteria" && <BacteriaModel {...common} />}
-          {cell.modelKind === "animal" && <AnimalModel {...common} />}
-          {cell.modelKind === "muscle" && <MuscleModel {...common} />}
-        </>
-      )}
+      {object.modelKind === "mainStar" && <MainStarModel {...common} />}
+      {object.modelKind === "neutronStar" && <NeutronStarModel {...common} />}
+      {object.modelKind === "blackHole" && <BlackHoleModel {...common} />}
+      {object.modelKind === "exoplanet" && <ExoplanetModel {...common} />}
+      {object.modelKind === "galaxy" && <GalaxyModel {...common} />}
+      {object.modelKind === "binaryStar" && <BinaryStarModel {...common} />}
     </group>
   );
 }
 
-function ModelLoadingOverlay({ cell }: { cell: CellItem }) {
+function ModelLoadingOverlay({ object }: { object: CosmicObject }) {
   const { progress } = useProgress();
   const displayProgress = Math.max(8, Math.min(100, Math.round(progress)));
 
   return (
     <Html center className="model-loader">
       <div>
-        <span>Loading 3D specimen</span>
-        <strong>{cell.name}</strong>
+        <span>Loading 3D model</span>
+        <strong>{object.name}</strong>
         <i>
           <b style={{ width: `${displayProgress}%` }} />
         </i>
@@ -936,73 +779,58 @@ function ModelLoadingOverlay({ cell }: { cell: CellItem }) {
   );
 }
 
-export function CellScene({
-  cell,
-  activeOrganelle,
+export function CosmicScene({
+  object,
+  activeFeature,
   viewMode,
   crossSection,
   autoRotate,
   resetKey,
-}: CellSceneProps) {
-  const nativeMaterial = cell.modelAsset?.materialMode === "native";
-
+  activeObservation,
+}: CosmicSceneProps) {
   return (
     <Canvas
       key={resetKey}
-      className={`cell-canvas${nativeMaterial ? " is-native-asset" : ""}`}
+      className="cell-canvas"
       dpr={[1, 2]}
       shadows
       gl={{ antialias: true, alpha: true, premultipliedAlpha: false }}
       camera={{ position: [0, 0.2, 5.8], fov: 38 }}
     >
-      {!nativeMaterial && <color attach="background" args={["#fbf7ee"]} />}
-      <ambientLight intensity={nativeMaterial ? 1.42 : 1.28} />
-      <hemisphereLight
-        args={[
-          nativeMaterial ? "#fffaf0" : "#fff8ea",
-          nativeMaterial ? "#efe3d2" : "#e3ded2",
-          nativeMaterial ? 1.26 : 1.18,
-        ]}
-      />
-      <directionalLight
-        position={[4.2, 5.2, 5.8]}
-        intensity={nativeMaterial ? 2.72 : 2.75}
-        castShadow
-      />
-      {nativeMaterial && (
-        <directionalLight
-          position={[-4.4, 2.2, 3.6]}
-          intensity={0.82}
-          color="#fff1df"
-        />
-      )}
+      <color attach="background" args={["#080c14"]} />
+      <ambientLight intensity={0.28} />
+      <hemisphereLight args={["#0d1b3e", "#000010", 0.38]} />
+      <directionalLight position={[4.2, 5.2, 5.8]} intensity={1.6} color="#c0d8ff" castShadow />
       <spotLight
         position={[-3.6, 3.2, 4.6]}
         angle={0.42}
         penumbra={0.74}
-        intensity={nativeMaterial ? 0.78 : 1.45}
-        color={nativeMaterial ? "#fff8ec" : cell.accentSoft}
+        intensity={0.6}
+        color={object.accentSoft}
       />
       <pointLight
         position={[2.8, -1.2, 3.2]}
-        intensity={nativeMaterial ? 0.46 : 0.6}
-        color={nativeMaterial ? "#ffffff" : cell.accent}
+        intensity={0.8}
+        color={object.accent}
       />
-      <Suspense fallback={<ModelLoadingOverlay cell={cell} />}>
+      <Suspense fallback={<ModelLoadingOverlay object={object} />}>
         <Float speed={1.25} rotationIntensity={0.08} floatIntensity={0.18}>
-          <CellModel
-            cell={cell}
-            activeOrganelle={activeOrganelle}
-            viewMode={viewMode}
-            crossSection={crossSection}
-            autoRotate={autoRotate}
-          />
+          <Center>
+            <CosmicModel
+              object={object}
+              activeFeature={activeFeature}
+              viewMode={viewMode}
+              crossSection={crossSection}
+              autoRotate={autoRotate}
+              activeObservation={activeObservation}
+            />
+          </Center>
         </Float>
         <ContactShadows
           position={[0, -1.8, 0]}
-          opacity={nativeMaterial ? 0.18 : 0.26}
-          scale={nativeMaterial ? 7.8 : 7.2}
-          blur={nativeMaterial ? 3.2 : 2.4}
+          opacity={0.12}
+          scale={7.0}
+          blur={2.4}
           far={4.2}
         />
       </Suspense>

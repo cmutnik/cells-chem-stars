@@ -1,20 +1,20 @@
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
-  background: #f2ecdf;
-  color: #29251e;
+  background: #080c14;
+  color: #e8eaf6;
   font-synthesis: none;
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
-  --paper: #fbf7ee;
-  --paper-deep: #f1eadc;
-  --ink: #28231c;
-  --muted: #80786d;
-  --line: rgba(91, 78, 60, 0.16);
-  --shadow: 0 18px 50px rgba(78, 66, 48, 0.12);
-  --shadow-soft: 0 8px 26px rgba(78, 66, 48, 0.1);
+  --paper: #0d1221;
+  --paper-deep: #0a0e1a;
+  --ink: #e8eaf6;
+  --muted: #7986cb;
+  --line: rgba(100, 120, 220, 0.18);
+  --shadow: 0 18px 50px rgba(0, 8, 40, 0.48);
+  --shadow-soft: 0 8px 26px rgba(0, 8, 40, 0.36);
   --serif: "Iowan Old Style", "Baskerville", "Libre Baskerville", Georgia, serif;
   --note: "Bradley Hand", "Segoe Print", "Comic Sans MS", cursive;
 }
@@ -26,8 +26,8 @@
 html {
   min-width: 320px;
   background:
-    radial-gradient(circle at 8% 6%, rgba(255, 255, 255, 0.78), transparent 26rem),
-    linear-gradient(135deg, #f6f0e4 0%, #efe7d8 100%);
+    radial-gradient(circle at 18% 12%, rgba(120, 100, 255, 0.12), transparent 40rem),
+    linear-gradient(135deg, #080c14 0%, #0d1525 100%);
 }
 
 body {
@@ -56,9 +56,9 @@ a {
   min-height: 100vh;
   padding: 22px;
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.4), transparent 28%, rgba(255, 255, 255, 0.4)),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03), transparent 28%, rgba(255, 255, 255, 0.03)),
     radial-gradient(circle at 50% 0%, var(--accent-soft), transparent 26rem),
-    #f2ecdf;
+    #080c14;
 }
 
 .topbar {
@@ -106,7 +106,7 @@ a {
   display: inline-flex;
   align-items: center;
   margin: 8px 0 0;
-  color: #675898;
+  color: #7986cb;
   font-family: var(--note);
   font-size: 1.15rem;
   font-weight: 700;
@@ -128,7 +128,7 @@ a {
   justify-content: center;
   gap: 8px;
   min-height: 44px;
-  color: #2f2a23;
+  color: #c5cae9;
 }
 
 .top-nav a {
@@ -152,7 +152,7 @@ a {
   height: 58px;
   display: grid;
   place-items: center;
-  border: 2px solid rgba(41, 35, 28, 0.66);
+  border: 2px solid rgba(100, 120, 220, 0.48);
   border-radius: 50%;
 }
 
@@ -191,7 +191,7 @@ a {
   border: 1px solid var(--line);
   border-radius: 8px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.2)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
     var(--paper);
   box-shadow: var(--shadow-soft);
 }
@@ -208,8 +208,8 @@ a {
   gap: 10px;
   margin-bottom: 18px;
   padding-bottom: 14px;
-  border-bottom: 1px dashed rgba(87, 78, 64, 0.22);
-  color: #3f345f;
+  border-bottom: 1px dashed rgba(100, 120, 220, 0.22);
+  color: #9fa8da;
   font-family: var(--note);
   font-size: 1rem;
   font-weight: 800;
@@ -222,6 +222,41 @@ a {
   align-items: center;
   min-width: 0;
   gap: 8px;
+}
+
+.info-tip {
+  position: relative;
+  display: inline-flex;
+  cursor: default;
+}
+
+.info-tip-body {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 220px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgba(20, 18, 36, 0.96);
+  border: 1px solid rgba(100, 120, 220, 0.22);
+  color: #c8cef5;
+  font-family: var(--sans, sans-serif);
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.5;
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+  z-index: 20;
+}
+
+.info-tip:hover .info-tip-body,
+.info-tip:focus-within .info-tip-body {
+  opacity: 1;
 }
 
 .cell-list,
@@ -255,7 +290,7 @@ a {
   transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--accent) 38%, transparent);
   background: var(--accent-soft);
-  box-shadow: 0 10px 24px rgba(62, 54, 44, 0.08);
+  box-shadow: 0 10px 24px rgba(0, 8, 40, 0.28);
 }
 
 .cell-row-copy {
@@ -290,7 +325,7 @@ a {
   place-items: center;
   width: 28px;
   height: 28px;
-  color: color-mix(in srgb, var(--accent) 58%, #5f574d);
+  color: color-mix(in srgb, var(--accent) 58%, #7986cb);
   cursor: pointer;
   opacity: 0.72;
 }
@@ -307,18 +342,18 @@ a {
   height: 54px;
   flex: 0 0 auto;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.64);
-  box-shadow: inset 0 0 0 1px rgba(72, 60, 46, 0.08);
+  background: rgba(13, 18, 40, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(100, 120, 220, 0.14);
 }
 
 .mini-cell.has-preview {
   overflow: hidden;
   background:
-    radial-gradient(circle at 36% 22%, rgba(255, 255, 255, 0.86), transparent 35%),
-    #f7f1e7;
+    radial-gradient(circle at 36% 22%, rgba(100, 120, 220, 0.12), transparent 35%),
+    #0d1221;
   box-shadow:
-    inset 0 0 0 1px rgba(72, 60, 46, 0.08),
-    0 10px 20px rgba(45, 38, 30, 0.12);
+    inset 0 0 0 1px rgba(100, 120, 220, 0.14),
+    0 10px 20px rgba(0, 8, 40, 0.28);
 }
 
 .mini-cell.has-preview img {
@@ -794,7 +829,7 @@ a {
 .notes-panel p,
 .occurrence-panel p {
   margin: 0;
-  color: #4b4236;
+  color: #b0bec5;
   font-family: var(--serif);
   font-size: 1.04rem;
   line-height: 1.65;
@@ -807,8 +842,8 @@ a {
   gap: 16px;
   margin-top: 20px;
   padding-top: 18px;
-  border-top: 1px dashed rgba(87, 78, 64, 0.22);
-  color: #66558f;
+  border-top: 1px dashed rgba(100, 120, 220, 0.22);
+  color: #9575cd;
   font-family: var(--note);
   font-size: 1.02rem;
   font-weight: 800;
@@ -875,7 +910,7 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #3f345f;
+  color: #9fa8da;
   font-family: var(--note);
   font-weight: 800;
 }
@@ -883,7 +918,7 @@ a {
 .lesson-focus p,
 .tutor-prompt p {
   margin: 0;
-  color: #4b4236;
+  color: #b0bec5;
   font-family: var(--serif);
   line-height: 1.55;
 }
@@ -1003,6 +1038,12 @@ a {
   box-shadow: var(--shadow-soft);
 }
 
+.micro-card.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow-soft);
+  transform: translateY(-2px);
+}
+
 .micro-card span {
   display: block;
   min-height: 116px;
@@ -1068,8 +1109,8 @@ a {
   height: 58px;
   color: #fff;
   border-radius: 50%;
-  background: #8260b7;
-  box-shadow: 0 12px 24px rgba(94, 68, 134, 0.28);
+  background: #4a148c;
+  box-shadow: 0 12px 24px rgba(74, 20, 140, 0.48);
 }
 
 .comparison-button {

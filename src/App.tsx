@@ -6,15 +6,14 @@ import {
   Camera,
   ChevronDown,
   CircleDot,
+  Telescope,
   Gauge,
   EyeOff,
   Grid3X3,
   Heart,
   Info,
-  Leaf,
   MessageCircle,
   Library,
-  Microscope,
   Plus,
   RotateCcw,
   Settings,
@@ -24,8 +23,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { CellScene } from "./components/CellScene";
-import { cells, getCellById, type CellItem, type ViewMode } from "./data/cells";
+import { CosmicScene } from "./components/CellScene";
+import { cosmicObjects, getCosmicObjectById, type CosmicObject, type ViewMode } from "./data/cosmicObjects";
 
 type ModeOption = {
   id: ViewMode;
@@ -38,9 +37,9 @@ const modeOptions: ModeOption[] = [
   { id: "focus", label: "Focus", Icon: CircleDot },
 ];
 
-const initialCell = getCellById("animal");
+const initialObject = getCosmicObjectById("mainStar");
 
-function Header({ cell }: { cell: CellItem }) {
+function Header({ object }: { object: CosmicObject }) {
   return (
     <header className="topbar">
       <div className="brand-block">
@@ -48,8 +47,8 @@ function Header({ cell }: { cell: CellItem }) {
           <Sparkles size={26} />
         </div>
         <div>
-          <h1>Cell Architecture Studio</h1>
-          <p>Explore life at the microscopic level</p>
+          <h1>Astronomy Explorer</h1>
+          <p>Explore stars, black holes, and galaxies</p>
         </div>
       </div>
 
@@ -71,8 +70,8 @@ function Header({ cell }: { cell: CellItem }) {
           <span>Settings</span>
         </a>
         <button className="avatar-button" type="button" aria-label="User menu">
-          <span className="avatar-core" style={{ background: cell.accentSoft }}>
-            <span style={{ background: cell.accent }} />
+          <span className="avatar-core" style={{ background: object.accentSoft }}>
+            <span style={{ background: object.accent }} />
           </span>
           <ChevronDown size={20} />
         </button>
@@ -82,33 +81,17 @@ function Header({ cell }: { cell: CellItem }) {
 }
 
 type SidebarProps = {
-  selectedCell: CellItem;
-  activeOrganelle: string;
+  selectedObject: CosmicObject;
+  activeFeature: string;
   favorites: Set<string>;
-  onSelectCell: (id: string) => void;
-  onSelectOrganelle: (id: string) => void;
+  onSelectObject: (id: string) => void;
+  onSelectFeature: (id: string) => void;
   onToggleFavorite: (id: string) => void;
 };
 
-function MiniCell({ cell }: { cell: CellItem }) {
-  if (cell.renderImage?.url) {
-    return (
-      <span className="mini-cell has-preview" style={{ "--thumb": cell.accent } as CSSProperties}>
-        <img src={cell.renderImage.url} alt="" aria-hidden="true" />
-      </span>
-    );
-  }
-
-  if (cell.modelAsset?.previewUrl) {
-    return (
-      <span className="mini-cell has-preview" style={{ "--thumb": cell.accent } as CSSProperties}>
-        <img src={cell.modelAsset.previewUrl} alt="" aria-hidden="true" />
-      </span>
-    );
-  }
-
+function MiniObject({ object }: { object: CosmicObject }) {
   return (
-    <span className={`mini-cell mini-cell-${cell.modelKind}`} style={{ "--thumb": cell.accent } as CSSProperties}>
+    <span className={`mini-cell mini-cell-${object.modelKind}`} style={{ "--thumb": object.accent } as CSSProperties}>
       <span />
       <i />
       <b />
@@ -117,11 +100,11 @@ function MiniCell({ cell }: { cell: CellItem }) {
 }
 
 function Sidebar({
-  selectedCell,
-  activeOrganelle,
+  selectedObject,
+  activeFeature,
   favorites,
-  onSelectCell,
-  onSelectOrganelle,
+  onSelectObject,
+  onSelectFeature,
   onToggleFavorite,
 }: SidebarProps) {
   return (
@@ -129,36 +112,36 @@ function Sidebar({
       <section className="panel cell-type-panel">
         <div className="panel-heading">
           <span>
-            <Leaf size={18} />
-            Cell Types
+            <Telescope size={18} />
+            Objects
           </span>
           <ChevronDown size={18} />
         </div>
 
         <div className="cell-list">
-          {cells.map((cell) => {
-            const selected = selectedCell.id === cell.id;
+          {cosmicObjects.map((object) => {
+            const selected = selectedObject.id === object.id;
             return (
               <button
                 className={`cell-row ${selected ? "is-active" : ""}`}
                 type="button"
-                key={cell.id}
-                onClick={() => onSelectCell(cell.id)}
+                key={object.id}
+                onClick={() => onSelectObject(object.id)}
               >
-                <MiniCell cell={cell} />
+                <MiniObject object={object} />
                 <span className="cell-row-copy">
-                  <strong>{cell.name}</strong>
-                  <span>{cell.type}</span>
+                  <strong>{object.name}</strong>
+                  <span>{object.type}</span>
                 </span>
                 <span
-                  className={`favorite-dot ${favorites.has(cell.id) ? "is-on" : ""}`}
+                  className={`favorite-dot ${favorites.has(object.id) ? "is-on" : ""}`}
                   onClick={(event) => {
                     event.stopPropagation();
-                    onToggleFavorite(cell.id);
+                    onToggleFavorite(object.id);
                   }}
                   role="button"
                   tabIndex={0}
-                  aria-label={`Favorite ${cell.name}`}
+                  aria-label={`Favorite ${object.name}`}
                 >
                   <Star size={18} fill="currentColor" />
                 </span>
@@ -172,21 +155,21 @@ function Sidebar({
         <div className="panel-heading">
           <span>
             <Sparkles size={16} />
-            Organelles
+            Features
           </span>
           <ChevronDown size={18} />
         </div>
 
         <div className="organelle-list">
-          {selectedCell.organelles.map((organelle) => (
+          {selectedObject.features.map((feature) => (
             <button
-              className={`organelle-row ${activeOrganelle === organelle.id ? "is-active" : ""}`}
+              className={`organelle-row ${activeFeature === feature.id ? "is-active" : ""}`}
               type="button"
-              key={organelle.id}
-              onClick={() => onSelectOrganelle(organelle.id)}
+              key={feature.id}
+              onClick={() => onSelectFeature(feature.id)}
             >
-              <span className="color-dot" style={{ background: organelle.color }} />
-              <span>{organelle.name}</span>
+              <span className="color-dot" style={{ background: feature.color }} />
+              <span>{feature.name}</span>
             </button>
           ))}
         </div>
@@ -196,12 +179,13 @@ function Sidebar({
 }
 
 type StageProps = {
-  cell: CellItem;
-  activeOrganelle: string;
+  object: CosmicObject;
+  activeFeature: string;
   viewMode: ViewMode;
   crossSection: boolean;
   autoRotate: boolean;
   resetKey: number;
+  activeObservation: string | null;
   onModeChange: (mode: ViewMode) => void;
   onCrossSectionChange: (value: boolean) => void;
   onAutoRotateChange: (value: boolean) => void;
@@ -210,12 +194,13 @@ type StageProps = {
 };
 
 function Stage({
-  cell,
-  activeOrganelle,
+  object,
+  activeFeature,
   viewMode,
   crossSection,
   autoRotate,
   resetKey,
+  activeObservation,
   onModeChange,
   onCrossSectionChange,
   onAutoRotateChange,
@@ -227,8 +212,8 @@ function Stage({
       <section className="stage-panel">
         <div className="stage-title">
           <div>
-            <h2>{cell.name}</h2>
-            <p>{cell.type}</p>
+            <h2>{object.name}</h2>
+            <p>{object.type}</p>
           </div>
 
           <div className="view-card">
@@ -259,13 +244,14 @@ function Stage({
         </div>
 
         <div className="canvas-wrap">
-          <CellScene
-            cell={cell}
-            activeOrganelle={activeOrganelle}
+          <CosmicScene
+            object={object}
+            activeFeature={activeFeature}
             viewMode={viewMode}
             crossSection={crossSection}
             autoRotate={autoRotate}
             resetKey={resetKey}
+            activeObservation={activeObservation}
           />
         </div>
 
@@ -293,11 +279,11 @@ function Stage({
         </div>
 
         <div className="export-toolbar">
-          <button type="button" onClick={() => onToast("截图功能这里先做占位。")}>
+          <button type="button" onClick={() => onToast("Screenshot feature coming soon.")}>
             <Camera size={20} />
             Screenshot
           </button>
-          <button type="button" onClick={() => onToast("GLB 导出需要接入模型导出管线。")}>
+          <button type="button" onClick={() => onToast("GLB export pipeline not yet connected.")}>
             <Box size={20} />
             GLB Export
           </button>
@@ -308,71 +294,71 @@ function Stage({
 }
 
 type RightPanelProps = {
-  cell: CellItem;
-  activeOrganelle: string;
+  object: CosmicObject;
+  activeFeature: string;
   favorites: Set<string>;
   mastery: number;
-  viewedCellCount: number;
-  viewedOrganelleCount: number;
-  totalOrganelleCount: number;
+  viewedObjectCount: number;
+  viewedFeatureCount: number;
+  totalFeatureCount: number;
   tutorPrompt: string;
   onToggleFavorite: (id: string) => void;
   onTutorPrompt: (prompt: string) => void;
 };
 
-function buildTutorPrompts(cell: CellItem, organelle: CellItem["organelles"][number]) {
+function buildTutorPrompts(object: CosmicObject, feature: CosmicObject["features"][number]) {
   return [
-    `Explain how ${organelle.name} helps a ${cell.name} stay alive.`,
-    `Quiz me on the visual differences between ${cell.name} and ${getCellById(cell.comparison).name}.`,
-    `Guide me through finding ${organelle.name} inside the 3D model.`,
+    `Explain ${feature.name} in ${object.name} and its physical significance.`,
+    `Quiz me on the observational differences between ${object.name} and ${getCosmicObjectById(object.comparison).name}.`,
+    `Guide me through identifying ${feature.name} in the 3D visualization.`,
   ];
 }
 
 function RightPanel({
-  cell,
-  activeOrganelle,
+  object,
+  activeFeature,
   favorites,
   mastery,
-  viewedCellCount,
-  viewedOrganelleCount,
-  totalOrganelleCount,
+  viewedObjectCount,
+  viewedFeatureCount,
+  totalFeatureCount,
   tutorPrompt,
   onToggleFavorite,
   onTutorPrompt,
 }: RightPanelProps) {
-  const organelle = cell.organelles.find((item) => item.id === activeOrganelle) ?? cell.organelles[0];
-  const tutorPrompts = buildTutorPrompts(cell, organelle);
+  const feature = object.features.find((item) => item.id === activeFeature) ?? object.features[0];
+  const tutorPrompts = buildTutorPrompts(object, feature);
 
   return (
     <aside className="right-rail">
       <section className="panel details-panel">
         <div className="panel-heading detail-heading">
-          <span>Organelle Details</span>
-          <button type="button" onClick={() => onToggleFavorite(cell.id)} aria-label="Toggle favorite">
-            <Heart size={22} fill={favorites.has(cell.id) ? "currentColor" : "none"} />
+          <span>Feature Details</span>
+          <button type="button" onClick={() => onToggleFavorite(object.id)} aria-label="Toggle favorite">
+            <Heart size={22} fill={favorites.has(object.id) ? "currentColor" : "none"} />
           </button>
         </div>
 
         <div className="detail-hero">
-          <span className="organelle-orb" style={{ background: organelle.color }} />
+          <span className="organelle-orb" style={{ background: feature.color }} />
           <div>
-            <h3>{organelle.name}</h3>
-            <p>{organelle.subtitle}</p>
+            <h3>{feature.name}</h3>
+            <p>{feature.subtitle}</p>
           </div>
         </div>
 
         <dl className="attribute-list">
-          {organelle.attributes.map((item) => (
+          {feature.attributes.map((item) => (
             <div key={item.label}>
               <dt>{item.label}</dt>
               <dd>{item.value}</dd>
             </div>
           ))}
           <div>
-            <dt>Label</dt>
+            <dt>Highlight</dt>
             <dd>
               <span className="mini-toggle is-on" />
-              <span className="detail-dot" style={{ background: organelle.color }} />
+              <span className="detail-dot" style={{ background: feature.color }} />
             </dd>
           </div>
         </dl>
@@ -380,11 +366,11 @@ function RightPanel({
 
       <section className="panel notes-panel">
         <div className="panel-heading">
-          <span>Biological Notes</span>
+          <span>Astrophysical Notes</span>
         </div>
-        <p>{organelle.note}</p>
+        <p>{feature.note}</p>
         <div className="fun-fact">
-          <span>Fun Fact: {organelle.fact}</span>
+          <span>Fun Fact: {feature.fact}</span>
           <Sparkles size={18} />
         </div>
       </section>
@@ -407,7 +393,7 @@ function RightPanel({
             <b />
           </i>
           <small>
-            {viewedCellCount}/{cells.length} cells explored · {viewedOrganelleCount}/{totalOrganelleCount} organelles inspected
+            {viewedObjectCount}/{cosmicObjects.length} objects explored · {viewedFeatureCount}/{totalFeatureCount} features inspected
           </small>
         </div>
 
@@ -417,8 +403,8 @@ function RightPanel({
             Current lesson focus
           </span>
           <p>
-            Locate <strong>{organelle.name}</strong>, explain its role, then compare it with the matching structure in{" "}
-            {getCellById(cell.comparison).name}.
+            Identify <strong>{feature.name}</strong>, describe its physics, then compare it to the equivalent feature in{" "}
+            {getCosmicObjectById(object.comparison).name}.
           </p>
         </div>
 
@@ -441,54 +427,61 @@ function RightPanel({
 
       <section className="panel occurrence-panel">
         <div className="panel-heading">
-          <span>Where It Occurs</span>
+          <span>Found In</span>
         </div>
-        <div className={`occurrence-art occurrence-${cell.occurrence.motif}`}>
+        <div className={`occurrence-art occurrence-${object.occurrence.motif}`}>
           <span />
           <i />
           <b />
         </div>
-        <h4>{cell.occurrence.title}</h4>
-        <p>{cell.occurrence.body}</p>
+        <h4>{object.occurrence.title}</h4>
+        <p>{object.occurrence.body}</p>
       </section>
     </aside>
   );
 }
 
 type BottomPanelsProps = {
-  cell: CellItem;
+  object: CosmicObject;
+  activeObservation: string | null;
+  onObservationChange: (pattern: string) => void;
   onCompare: () => void;
   onToast: (message: string) => void;
 };
 
-function BottomPanels({ cell, onCompare, onToast }: BottomPanelsProps) {
-  const comparedCell = getCellById(cell.comparison);
+function BottomPanels({ object, activeObservation, onObservationChange, onCompare, onToast }: BottomPanelsProps) {
+  const comparedObject = getCosmicObjectById(object.comparison);
 
   return (
     <section className="bottom-grid">
       <div className="panel microscope-panel">
         <div className="panel-heading">
           <span>
-            Microscope View
-            <Info size={16} />
+            Observations
+            <span className="info-tip">
+              <Info size={16} />
+              <span className="info-tip-body">
+                Switch between imaging methods—optical, radio, X-ray—to observe this object through different scientific lenses.
+              </span>
+            </span>
           </span>
         </div>
         <div className="micro-card-row">
-          {cell.microscope.map((image) => (
+          {object.observations.map((image) => (
             <button
               type="button"
               key={image.label}
-              className={`micro-card pattern-${image.pattern}`}
+              className={`micro-card pattern-${image.pattern}${activeObservation === image.pattern ? " is-active" : ""}`}
               style={{ "--micro": image.tone } as CSSProperties}
-              onClick={() => onToast(`${image.label} selected.`)}
+              onClick={() => onObservationChange(image.pattern)}
             >
               <span />
               <strong>{image.label}</strong>
             </button>
           ))}
-          <button type="button" className="micro-card add-card" onClick={() => onToast("Image upload is a planned step.")}>
+          <button type="button" className="micro-card add-card" onClick={() => onToast("Method upload is a planned feature.")}>
             <Plus size={28} />
-            <strong>Add Image</strong>
+            <strong>Add Method</strong>
           </button>
         </div>
       </div>
@@ -496,25 +489,30 @@ function BottomPanels({ cell, onCompare, onToast }: BottomPanelsProps) {
       <div className="panel compare-panel">
         <div className="panel-heading">
           <span>
-            Compare Cells
-            <Info size={16} />
+            Compare Objects
+            <span className="info-tip">
+              <Info size={16} />
+              <span className="info-tip-body">
+                Compare this object's physical properties, scale, and lifecycle against a contrasting cosmic counterpart.
+              </span>
+            </span>
           </span>
         </div>
         <div className="compare-row">
           <div>
-            <MiniCell cell={cell} />
+            <MiniObject object={object} />
             <span>
-              <strong>{cell.name}</strong>
+              <strong>{object.name}</strong>
               <em>You are here</em>
             </span>
           </div>
           <b>VS</b>
           <div>
             <span>
-              <strong>{comparedCell.name}</strong>
-              <em>{comparedCell.type}</em>
+              <strong>{comparedObject.name}</strong>
+              <em>{comparedObject.type}</em>
             </span>
-            <MiniCell cell={comparedCell} />
+            <MiniObject object={comparedObject} />
           </div>
         </div>
         <button type="button" className="comparison-button" onClick={onCompare}>
@@ -527,23 +525,23 @@ function BottomPanels({ cell, onCompare, onToast }: BottomPanelsProps) {
 }
 
 type ComparisonModalProps = {
-  cell: CellItem;
+  object: CosmicObject;
   open: boolean;
   onClose: () => void;
 };
 
-function ComparisonModal({ cell, open, onClose }: ComparisonModalProps) {
-  const comparedCell = getCellById(cell.comparison);
+function ComparisonModal({ object, open, onClose }: ComparisonModalProps) {
+  const comparedObject = getCosmicObjectById(object.comparison);
   if (!open) {
     return null;
   }
 
-  const currentOrganelle = cell.organelles.find((item) => item.id === cell.defaultOrganelle) ?? cell.organelles[0];
-  const comparedOrganelle =
-    comparedCell.organelles.find((item) => item.id === comparedCell.defaultOrganelle) ?? comparedCell.organelles[0];
+  const currentFeature = object.features.find((item) => item.id === object.defaultFeature) ?? object.features[0];
+  const comparedFeature =
+    comparedObject.features.find((item) => item.id === comparedObject.defaultFeature) ?? comparedObject.features[0];
 
   return (
-    <div className="modal-layer" role="dialog" aria-modal="true" aria-label="Cell comparison">
+    <div className="modal-layer" role="dialog" aria-modal="true" aria-label="Cosmic object comparison">
       <div className="comparison-modal">
         <button className="modal-close" type="button" onClick={onClose}>
           Close
@@ -551,28 +549,28 @@ function ComparisonModal({ cell, open, onClose }: ComparisonModalProps) {
         <div className="comparison-modal-head">
           <h3>Comparison View</h3>
           <p>
-            {cell.name} compared with {comparedCell.name}
+            {object.name} compared with {comparedObject.name}
           </p>
         </div>
         <div className="comparison-columns">
-          {[cell, comparedCell].map((item) => {
-            const organelle = item.id === cell.id ? currentOrganelle : comparedOrganelle;
+          {[object, comparedObject].map((item) => {
+            const feature = item.id === object.id ? currentFeature : comparedFeature;
             return (
               <section key={item.id}>
-                <MiniCell cell={item} />
+                <MiniObject object={item} />
                 <h4>{item.name}</h4>
                 <p>{item.type}</p>
                 <dl>
                   <div>
-                    <dt>Default focus</dt>
-                    <dd>{organelle.name}</dd>
+                    <dt>Key feature</dt>
+                    <dd>{feature.name}</dd>
                   </div>
                   <div>
-                    <dt>Main note</dt>
-                    <dd>{organelle.subtitle}</dd>
+                    <dt>Description</dt>
+                    <dd>{feature.subtitle}</dd>
                   </div>
                   <div>
-                    <dt>Occurs in</dt>
+                    <dt>Found in</dt>
                     <dd>{item.occurrence.title}</dd>
                   </div>
                 </dl>
@@ -593,52 +591,54 @@ function Toast({ message }: { message: string | null }) {
 }
 
 export default function App() {
-  const [selectedCellId, setSelectedCellId] = useState(initialCell.id);
-  const [activeOrganelle, setActiveOrganelle] = useState(initialCell.defaultOrganelle);
+  const [selectedObjectId, setSelectedObjectId] = useState(initialObject.id);
+  const [activeFeature, setActiveFeature] = useState(initialObject.defaultFeature);
+  const [activeObservation, setActiveObservation] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("mesh");
   const [crossSection, setCrossSection] = useState(false);
   const [autoRotate, setAutoRotate] = useState(true);
   const [resetKey, setResetKey] = useState(0);
-  const [favorites, setFavorites] = useState<Set<string>>(() => new Set([initialCell.id]));
-  const [viewedCells, setViewedCells] = useState<Set<string>>(() => new Set([initialCell.id]));
-  const [viewedOrganelleKeys, setViewedOrganelleKeys] = useState<Set<string>>(
-    () => new Set([`${initialCell.id}:${initialCell.defaultOrganelle}`]),
+  const [favorites, setFavorites] = useState<Set<string>>(() => new Set([initialObject.id]));
+  const [viewedObjects, setViewedObjects] = useState<Set<string>>(() => new Set([initialObject.id]));
+  const [viewedFeatureKeys, setViewedFeatureKeys] = useState<Set<string>>(
+    () => new Set([`${initialObject.id}:${initialObject.defaultFeature}`]),
   );
   const [comparisonOpen, setComparisonOpen] = useState(false);
   const [tutorPrompt, setTutorPrompt] = useState(
-    `Guide me through finding ${initialCell.organelles[0].name} inside the 3D model.`,
+    `Guide me through identifying ${initialObject.features[0].name} in the 3D visualization.`,
   );
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
-  const selectedCell = useMemo(() => getCellById(selectedCellId), [selectedCellId]);
-  const totalOrganelleCount = useMemo(
-    () => cells.reduce((total, cell) => total + cell.organelles.length, 0),
+  const selectedObject = useMemo(() => getCosmicObjectById(selectedObjectId), [selectedObjectId]);
+  const totalFeatureCount = useMemo(
+    () => cosmicObjects.reduce((total, object) => total + object.features.length, 0),
     [],
   );
   const mastery = useMemo(() => {
-    const cellCoverage = viewedCells.size / cells.length;
-    const organelleCoverage = viewedOrganelleKeys.size / totalOrganelleCount;
-    return Math.round((cellCoverage * 0.42 + organelleCoverage * 0.58) * 100);
-  }, [totalOrganelleCount, viewedCells, viewedOrganelleKeys]);
+    const objectCoverage = viewedObjects.size / cosmicObjects.length;
+    const featureCoverage = viewedFeatureKeys.size / totalFeatureCount;
+    return Math.round((objectCoverage * 0.42 + featureCoverage * 0.58) * 100);
+  }, [totalFeatureCount, viewedObjects, viewedFeatureKeys]);
 
   useEffect(() => {
-    setActiveOrganelle(selectedCell.defaultOrganelle);
+    setActiveFeature(selectedObject.defaultFeature);
+    setActiveObservation(null);
     setComparisonOpen(false);
-  }, [selectedCell]);
+  }, [selectedObject]);
 
   useEffect(() => {
-    setViewedCells((current) => {
+    setViewedObjects((current) => {
       const next = new Set(current);
-      next.add(selectedCell.id);
+      next.add(selectedObject.id);
       return next;
     });
-    setViewedOrganelleKeys((current) => {
+    setViewedFeatureKeys((current) => {
       const next = new Set(current);
-      next.add(`${selectedCell.id}:${activeOrganelle}`);
+      next.add(`${selectedObject.id}:${activeFeature}`);
       return next;
     });
-  }, [activeOrganelle, selectedCell.id]);
+  }, [activeFeature, selectedObject.id]);
 
   function showToast(message: string) {
     setToast(message);
@@ -661,33 +661,34 @@ export default function App() {
   }
 
   const shellStyle = {
-    "--accent": selectedCell.accent,
-    "--accent-soft": selectedCell.accentSoft,
-    "--cell-color": selectedCell.color,
+    "--accent": selectedObject.accent,
+    "--accent-soft": selectedObject.accentSoft,
+    "--cell-color": selectedObject.color,
   } as CSSProperties;
 
   return (
     <div className="app-shell" style={shellStyle}>
-      <Header cell={selectedCell} />
+      <Header object={selectedObject} />
 
       <div className="app-grid">
         <Sidebar
-          selectedCell={selectedCell}
-          activeOrganelle={activeOrganelle}
+          selectedObject={selectedObject}
+          activeFeature={activeFeature}
           favorites={favorites}
-          onSelectCell={setSelectedCellId}
-          onSelectOrganelle={setActiveOrganelle}
+          onSelectObject={setSelectedObjectId}
+          onSelectFeature={setActiveFeature}
           onToggleFavorite={toggleFavorite}
         />
 
         <div className="center-stack">
           <Stage
-            cell={selectedCell}
-            activeOrganelle={activeOrganelle}
+            object={selectedObject}
+            activeFeature={activeFeature}
             viewMode={viewMode}
             crossSection={crossSection}
             autoRotate={autoRotate}
             resetKey={resetKey}
+            activeObservation={activeObservation}
             onModeChange={setViewMode}
             onCrossSectionChange={setCrossSection}
             onAutoRotateChange={setAutoRotate}
@@ -698,20 +699,24 @@ export default function App() {
             onToast={showToast}
           />
           <BottomPanels
-            cell={selectedCell}
+            object={selectedObject}
+            activeObservation={activeObservation}
+            onObservationChange={(pattern) =>
+              setActiveObservation(pattern === activeObservation ? null : pattern)
+            }
             onCompare={() => setComparisonOpen(true)}
             onToast={showToast}
           />
         </div>
 
         <RightPanel
-          cell={selectedCell}
-          activeOrganelle={activeOrganelle}
+          object={selectedObject}
+          activeFeature={activeFeature}
           favorites={favorites}
           mastery={mastery}
-          viewedCellCount={viewedCells.size}
-          viewedOrganelleCount={viewedOrganelleKeys.size}
-          totalOrganelleCount={totalOrganelleCount}
+          viewedObjectCount={viewedObjects.size}
+          viewedFeatureCount={viewedFeatureKeys.size}
+          totalFeatureCount={totalFeatureCount}
           tutorPrompt={tutorPrompt}
           onToggleFavorite={toggleFavorite}
           onTutorPrompt={(prompt) => {
@@ -721,7 +726,7 @@ export default function App() {
         />
       </div>
 
-      <ComparisonModal cell={selectedCell} open={comparisonOpen} onClose={() => setComparisonOpen(false)} />
+      <ComparisonModal object={selectedObject} open={comparisonOpen} onClose={() => setComparisonOpen(false)} />
       <Toast message={toast} />
     </div>
   );
